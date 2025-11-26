@@ -5,7 +5,7 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: /etc/chrony.conf
+    chrony_conf: "/tmp/chrony.conf"
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
     chrony_log_dir: "/tmp/chrony_logs"
@@ -32,8 +32,8 @@
       copy:
         src: chrony.conf
         dest: "{{ chrony_conf }}"
-        owner: root
-        group: root
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_gid | default(ansible_user_id) }}"
         mode: '0644'
       notify: Restart chrony
 
