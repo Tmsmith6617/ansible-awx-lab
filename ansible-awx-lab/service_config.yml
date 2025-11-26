@@ -5,10 +5,10 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/runner/chrony.conf"
+    chrony_conf: "/var/lib/awx/data/ansible-lab/chrony.conf"
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/runner/chrony_logs"
+    chrony_log_dir: "/var/lib/awx/data/ansible-lab/logs"
 
   tasks:
 
@@ -61,4 +61,5 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
 
