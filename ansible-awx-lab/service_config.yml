@@ -25,7 +25,7 @@
         path: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"
         state: directory
         owner: 1000   # awx user inside container
-        group: 0      # root group
+        group: 1000      # root group
         mode: '0755'
 
     - name: Deploy main chrony config
@@ -61,5 +61,6 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
 
 
