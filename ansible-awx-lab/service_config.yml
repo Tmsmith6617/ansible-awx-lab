@@ -1,6 +1,7 @@
 ---
-- name: Configure Chrony NTP Service
+- name: Configure Chrony NTP Service (Localhost Demo)
   hosts: all
+  gather_facts: yes
 
   vars:
     chrony_package: chrony
@@ -14,12 +15,6 @@
       set_fact:
         chrony_log_dir: "/var/log/chrony"
         chrony_allow_line: "allow {{ allowed_network }}"
-
-    - name: Install Chrony package
-      dnf:
-        name: "{{ chrony_package }}"
-        state: present
-      when: ansible_os_family == "RedHat"
 
     - name: Show selected log directory
       debug:
@@ -58,15 +53,11 @@
         insertafter: EOF
       notify: Restart chrony
 
-    - name: Enable and start chrony service
-      service:
-        name: chronyd
-        state: started
-        enabled: yes
+    - name: Enable and start chrony service (simulated)
+      debug:
+        msg: "Would start and enable chrony service here (requires root)"
 
   handlers:
     - name: Restart chrony
-      service:
-        name: chronyd
-        state: restarted
-
+      debug:
+        msg: "Would restart chrony service here (requires root)"
