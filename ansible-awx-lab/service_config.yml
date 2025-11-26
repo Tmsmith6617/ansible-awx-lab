@@ -47,17 +47,21 @@
     - name: Ensure custom NTP server is in config
       lineinfile:
         path: "{{ chrony_conf }}"
-        regexp: '^server\s+{{ custom_ntp_server }}'
+        regexp: '^server {{ custom_ntp_server }}'
         line: "server {{ custom_ntp_server }} iburst"
         insertafter: EOF
+        state: present
+        backrefs: yes
       notify: Restart chrony
 
     - name: Ensure allowed network exists in config
       lineinfile:
         path: "{{ chrony_conf }}"
-        regexp: '^allow\s+{{ allowed_network }}'
+        regexp: '^allow {{ allowed_network }}'
         line: "{{ chrony_allow_line }}"
         insertafter: EOF
+        state: present
+        backrefs: yes
       notify: Restart chrony
 
     - name: Enable and start chrony service
@@ -71,3 +75,4 @@
       service:
         name: chronyd
         state: restarted
+
