@@ -19,6 +19,14 @@
       debug:
         msg: "Chrony logs will be stored at: {{ chrony_log_dir }}"
 
+    - name: Ensure chrony config directory exists
+      file:
+        path: /etc/chrony
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
     - name: Ensure chrony log directory exists
       file:
         path: "{{ chrony_log_dir }}"
