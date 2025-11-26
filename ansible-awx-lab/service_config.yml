@@ -1,14 +1,14 @@
----
 - name: Configure Chrony NTP Service (Localhost Demo)
   hosts: all
   gather_facts: yes
+  become: yes   # run tasks as root now
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/var/lib/awx/projects/_10__ansible_awx_lab/chrony.conf"
+    chrony_conf: "/etc/chrony/chrony.conf"  # system path is better
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"
+    chrony_log_dir: "/var/log/chrony"        # system log directory
 
   tasks:
 
@@ -22,18 +22,14 @@
 
     - name: Ensure chrony log directory exists
       file:
-        path: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"
+        path: "{{ chrony_log_dir }}"
         state: directory
-        owner: 1000   # awx user inside container
-        group: 1000      # root group
         mode: '0755'
 
     - name: Deploy main chrony config
       copy:
         src: chrony.conf
         dest: "{{ chrony_conf }}"
-        owner: 1000
-        group: 0
         mode: '0644'
       notify: Restart chrony
 
@@ -53,14 +49,14 @@
         insertafter: EOF
       notify: Restart chrony
 
-    - name: Enable and start chrony service (simulated)
-      debug:
-        msg: "Would start and enable chrony service here (requires root)"
+    - name: Enable and start chrony service
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
 
   handlers:
     - name: Restart chrony
-      debug:
-        msg: "Would restart chrony service here (requires root)"
-
-
-
+      service:
+        name: chronyd
+        state: restarted
