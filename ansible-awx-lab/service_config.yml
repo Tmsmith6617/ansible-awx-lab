@@ -1,7 +1,6 @@
 ---
 - name: Configure Chrony NTP Service
   hosts: all
-  become: yes
 
   vars:
     chrony_package: chrony
@@ -70,3 +69,4 @@
       service:
         name: chronyd
         state: restarted
+
