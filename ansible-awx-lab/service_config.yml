@@ -22,7 +22,7 @@
 
     - name: Ensure chrony log directory exists
       file:
-        path: "{{ chrony_log_dir }}"
+        path: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"
         state: directory
         owner: 1000   # awx user inside container
         group: 0      # root group
@@ -61,4 +61,5 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
 
