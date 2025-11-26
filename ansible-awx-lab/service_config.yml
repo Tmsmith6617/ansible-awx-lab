@@ -5,11 +5,10 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/opt/chrony/chrony.conf"
+    chrony_conf: "/tmp/chrony.conf"
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/opt/chrony/logs"
-
+    chrony_log_dir: "/tmp/chrony_logs"
 
   tasks:
 
@@ -62,4 +61,3 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
-
