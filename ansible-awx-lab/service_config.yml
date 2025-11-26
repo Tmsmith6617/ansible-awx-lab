@@ -8,25 +8,25 @@
     chrony_conf: /etc/chrony.conf
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
+    chrony_log_dir: "/tmp/chrony_logs"
 
   tasks:
 
     - name: Set dynamic facts (example of set_fact)
       set_fact:
-        chrony_log_dir: "/var/log/chrony"
         chrony_allow_line: "allow {{ allowed_network }}"
 
     - name: Show selected log directory
       debug:
         msg: "Chrony logs will be stored at: {{ chrony_log_dir }}"
 
-- name: Ensure chrony log directory exists
-  file:
-    path: "{{ chrony_log_dir }}"
-    state: directory
-    owner: "{{ ansible_user_id }}"
-    group: "{{ ansible_user_gid | default(ansible_user_id) }}"
-    mode: '0755'
+    - name: Ensure chrony log directory exists
+      file:
+        path: "{{ chrony_log_dir }}"
+        state: directory
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+        mode: '0755'
 
     - name: Deploy main chrony config (baseline file)
       copy:
@@ -61,4 +61,3 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
-
