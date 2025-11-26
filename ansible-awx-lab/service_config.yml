@@ -5,10 +5,10 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/var/lib/awx/data/ansible-lab/chrony.conf"
+    chrony_conf: "/mnt/ansible-lab/chrony.conf"     # Persistent PVC mount
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/var/lib/awx/data/ansible-lab/logs"
+    chrony_log_dir: "/mnt/ansible-lab/logs"        # Persistent PVC mount
 
   tasks:
 
@@ -61,5 +61,3 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
-
-
