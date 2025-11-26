@@ -1,7 +1,6 @@
 - name: Configure Chrony NTP Service (Localhost Demo)
   hosts: all
   gather_facts: yes
-  become: yes   # run tasks as root now
 
   vars:
     chrony_package: chrony
@@ -60,3 +59,4 @@
       service:
         name: chronyd
         state: restarted
+
