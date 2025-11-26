@@ -5,10 +5,11 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/home/ansible/chrony.conf"       # persistent path
+    chrony_conf: "/opt/chrony/chrony.conf"
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/home/ansible/chrony_logs"    # persistent path
+    chrony_log_dir: "/opt/chrony/logs"
+
 
   tasks:
 
@@ -61,3 +62,4 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
