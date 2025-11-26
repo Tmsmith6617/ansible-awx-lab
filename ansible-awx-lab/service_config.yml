@@ -1,13 +1,12 @@
-- name: Configure Chrony NTP Service (Localhost Demo)
+- name: Configure Chrony NTP Service (AWX Container Demo)
   hosts: all
   gather_facts: no
 
   vars:
-    chrony_package: chrony
-    chrony_conf: "/var/lib/awx/projects/_10__ansible_awx_lab/chrony.conf"  # system path is better
+    chrony_conf: "./chrony.conf"              # inside project directory
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"        # system log directory
+    chrony_log_dir: "./logs"                   # inside project directory
 
   tasks:
 
@@ -48,17 +47,7 @@
         insertafter: EOF
       notify: Restart chrony
 
-    - name: Enable and start chrony service
-      service:
-        name: chronyd
-        state: started
-        enabled: yes
-
   handlers:
     - name: Restart chrony
-      service:
-        name: chronyd
-        state: restarted
-
-
-
+      debug:
+        msg: "Would restart chrony here (service unavailable in container)"
