@@ -5,14 +5,14 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/var/lib/awx/projects/ansible-lab/chrony.conf"     # Persistent PVC mount
+    chrony_conf: "/var/lib/awx/projects/_10__ansible_awx_lab/chrony.conf"
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/var/lib/awx/projects/ansible-lab/logs"        # Persistent PVC mount
+    chrony_log_dir: "/var/lib/awx/projects/_10__ansible_awx_lab/logs"
 
   tasks:
 
-    - name: Set dynamic facts (example of set_fact)
+    - name: Set dynamic facts
       set_fact:
         chrony_allow_line: "allow {{ allowed_network }}"
 
@@ -24,20 +24,20 @@
       file:
         path: "{{ chrony_log_dir }}"
         state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+        owner: 1000   # awx user inside container
+        group: 0      # root group
         mode: '0755'
 
-    - name: Deploy main chrony config (baseline file)
+    - name: Deploy main chrony config
       copy:
         src: chrony.conf
         dest: "{{ chrony_conf }}"
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+        owner: 1000
+        group: 0
         mode: '0644'
       notify: Restart chrony
 
-    - name: Ensure custom NTP server is in config (lineinfile example)
+    - name: Ensure custom NTP server is in config
       lineinfile:
         path: "{{ chrony_conf }}"
         regexp: '^server '
@@ -61,4 +61,3 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
-
