@@ -61,3 +61,4 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
