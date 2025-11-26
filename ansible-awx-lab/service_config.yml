@@ -1,12 +1,13 @@
-- name: Configure Chrony NTP Service (AWX Container Demo)
+- name: Configure Chrony NTP Service (RHEL Host)
   hosts: all
-  gather_facts: no
+  gather_facts: yes
+  become: yes
 
   vars:
-    chrony_conf: "./chrony.conf"              # inside project directory
+    chrony_conf: "/etc/chrony/chrony.conf"          # Persistent system path
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "./logs"                   # inside project directory
+    chrony_log_dir: "/var/log/chrony"              # Persistent log directory
 
   tasks:
 
@@ -22,19 +23,23 @@
       file:
         path: "{{ chrony_log_dir }}"
         state: directory
+        owner: root
+        group: root
         mode: '0755'
 
     - name: Deploy main chrony config
       copy:
         src: chrony.conf
         dest: "{{ chrony_conf }}"
+        owner: root
+        group: root
         mode: '0644'
       notify: Restart chrony
 
     - name: Ensure custom NTP server is in config
       lineinfile:
         path: "{{ chrony_conf }}"
-        regexp: '^server '
+        regexp: '^server\s+{{ custom_ntp_server }}'
         line: "server {{ custom_ntp_server }} iburst"
         insertafter: EOF
       notify: Restart chrony
@@ -42,12 +47,19 @@
     - name: Ensure allowed network exists in config
       lineinfile:
         path: "{{ chrony_conf }}"
-        regexp: '^allow '
+        regexp: '^allow\s+{{ allowed_network }}'
         line: "{{ chrony_allow_line }}"
         insertafter: EOF
       notify: Restart chrony
 
+    - name: Enable and start chrony service
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
+
   handlers:
     - name: Restart chrony
-      debug:
-        msg: "Would restart chrony here (service unavailable in container)"
+      service:
+        name: chronyd
+        state: restarted
