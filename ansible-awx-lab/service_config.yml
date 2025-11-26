@@ -5,10 +5,10 @@
 
   vars:
     chrony_package: chrony
-    chrony_conf: "/tmp/chrony.conf"
+    chrony_conf: "/home/ansible/chrony.conf"       # persistent path
     custom_ntp_server: "time.cloudflare.com"
     allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/tmp/chrony_logs"
+    chrony_log_dir: "/home/ansible/chrony_logs"    # persistent path
 
   tasks:
 
