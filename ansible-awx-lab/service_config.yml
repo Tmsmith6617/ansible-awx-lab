@@ -1,0 +1,72 @@
+---
+- name: Configure Chrony NTP Service
+  hosts: all
+  become: yes
+
+  vars:
+    chrony_package: chrony
+    chrony_conf: /etc/chrony.conf
+    custom_ntp_server: "time.cloudflare.com"
+    allowed_network: "192.168.1.0/24"
+
+  tasks:
+
+    - name: Set dynamic facts (example of set_fact)
+      set_fact:
+        chrony_log_dir: "/var/log/chrony"
+        chrony_allow_line: "allow {{ allowed_network }}"
+
+    - name: Install Chrony package
+      dnf:
+        name: "{{ chrony_package }}"
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Show selected log directory
+      debug:
+        msg: "Chrony logs will be stored at: {{ chrony_log_dir }}"
+
+    - name: Ensure chrony log directory exists
+      file:
+        path: "{{ chrony_log_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Deploy main chrony config (baseline file)
+      copy:
+        src: chrony.conf
+        dest: "{{ chrony_conf }}"
+        owner: root
+        group: root
+        mode: '0644'
+      notify: Restart chrony
+
+    - name: Ensure custom NTP server is in config (lineinfile example)
+      lineinfile:
+        path: "{{ chrony_conf }}"
+        regexp: '^server '
+        line: "server {{ custom_ntp_server }} iburst"
+        insertafter: EOF
+      notify: Restart chrony
+
+    - name: Ensure allowed network exists in config
+      lineinfile:
+        path: "{{ chrony_conf }}"
+        regexp: '^allow '
+        line: "{{ chrony_allow_line }}"
+        insertafter: EOF
+      notify: Restart chrony
+
+    - name: Enable and start chrony service
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Restart chrony
+      service:
+        name: chronyd
+        state: restarted

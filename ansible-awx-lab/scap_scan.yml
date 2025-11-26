@@ -1,0 +1,47 @@
+---
+- name: Run SCAP Scan and Collect Results
+  hosts: all
+  become: yes
+
+  vars:
+    scap_profile: xccdf_org.ssgproject.content_profile_stig
+    scap_content: /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+    results_path: /tmp/scap-results.xml
+    results_dest_dir: /tmp/scap_collected
+
+  tasks:
+
+    - name: Ensure destination directory exists on AWX controller
+      delegate_to: localhost
+      file:
+        path: "{{ results_dest_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Run OpenSCAP evaluation (command example)
+      command: >
+        oscap xccdf eval
+        --profile {{ scap_profile }}
+        --results {{ results_path }}
+        {{ scap_content }}
+      register: scap_output
+      changed_when: "'Evaluating' in scap_output.stdout"
+
+    - name: Debug command output
+      debug:
+        var: scap_output.stdout
+
+    - name: Slurp SCAP results (slurp example)
+      slurp:
+        src: "{{ results_path }}"
+      register: slurped_scap
+
+    - name: Save results to AWX controller
+      delegate_to: localhost
+      copy:
+        content: "{{ slurped_scap.content | b64decode }}"
+        dest: "{{ results_dest_dir }}/scap-{{ inventory_hostname }}.xml"
+
+    - name: Show where results were stored
+      debug:
+        msg: "SCAP results saved to {{ results_dest_dir }}/scap-{{ inventory_hostname }}.xml"
