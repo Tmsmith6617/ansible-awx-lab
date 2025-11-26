@@ -20,13 +20,13 @@
       debug:
         msg: "Chrony logs will be stored at: {{ chrony_log_dir }}"
 
-    - name: Ensure chrony log directory exists
-      file:
-        path: "{{ chrony_log_dir }}"
-        state: directory
-        owner: root
-        group: root
-        mode: '0755'
+- name: Ensure chrony log directory exists
+  file:
+    path: "{{ chrony_log_dir }}"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    group: "{{ ansible_user_gid | default(ansible_user_id) }}"
+    mode: '0755'
 
     - name: Deploy main chrony config (baseline file)
       copy:
@@ -61,3 +61,4 @@
     - name: Restart chrony
       debug:
         msg: "Would restart chrony service here (requires root)"
+
