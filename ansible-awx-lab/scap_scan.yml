@@ -10,7 +10,7 @@
         name: scap-security-guide
         state: present
 
-    # 2. INSTALL AND START WEB SERVER FOR RETRIEVAL (NEW)
+    # 2. INSTALL AND START WEB SERVER FOR RETRIEVAL
     - name: Ensure Nginx is installed
       ansible.builtin.dnf:
         name: nginx
@@ -22,14 +22,22 @@
         state: started
         enabled: yes
 
-    # 3. PREPARE SCAN DIRECTORY
+    # 3. OPEN FIREWALL PORT FOR NGINX (NEW TASK)
+    - name: Open firewall port 80 for Nginx
+      ansible.posix.firewalld:
+        service: http
+        permanent: yes
+        state: enabled
+      notify: Reload firewalld # <--- TRIGGERS THE HANDLER BELOW
+
+    # 4. PREPARE SCAN DIRECTORY
     - name: Ensure /tmp/scap directory exists
-      file:
+      ansible.builtin.file:
         path: /tmp/scap
         state: directory
         mode: '0755'
 
-    # 4. RUN THE SCAN
+    # 5. RUN THE SCAN
     - name: Run SCAP scan using STIG profile
       shell: >
         oscap xccdf eval
@@ -40,7 +48,7 @@
       args:
         creates: /tmp/scap/results_{{ inventory_hostname }}.xml
 
-    # 5. STAGE THE REPORT TO THE WEB ROOT (NEW)
+    # 6. STAGE THE REPORT TO THE WEB ROOT
     - name: Copy HTML report to Nginx web root
       ansible.builtin.copy:
         src: /tmp/scap/report_{{ inventory_hostname }}.html
@@ -49,9 +57,18 @@
         owner: nginx
         group: nginx
         mode: '0644'
-        
-    # 6. CLEANUP (Removing fetch tasks as they are no longer needed)
+
+    # 7. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
+
+# -------------------------------------------------------------------
+# HANDLERS SECTION (NEW SECTION AT THE END OF THE FILE)
+# -------------------------------------------------------------------
+  handlers:
+    - name: Reload firewalld
+      ansible.builtin.service:
+        name: firewalld
+        state: reloaded
