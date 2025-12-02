@@ -8,5 +8,3 @@ spec:
   ingress_type: none
   hostname: awx.example.com
   admin_user: admin
-  admin_password: BePrepared6617Tms!
-
