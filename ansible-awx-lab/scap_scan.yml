@@ -22,13 +22,13 @@
         state: started
         enabled: yes
 
-    # 3. OPEN FIREWALL PORT FOR NGINX (NEW TASK)
+    # 3. OPEN FIREWALL PORT FOR NGINX
     - name: Open firewall port 80 for Nginx
       ansible.posix.firewalld:
         service: http
         permanent: yes
         state: enabled
-      notify: Reload firewalld # <--- TRIGGERS THE HANDLER BELOW
+      notify: Reload firewalld # This will be executed successfully now!
 
     # 4. PREPARE SCAN DIRECTORY
     - name: Ensure /tmp/scap directory exists
@@ -37,7 +37,7 @@
         state: directory
         mode: '0755'
 
-    # 5. RUN THE SCAN
+    # 5. RUN THE SCAN (CRITICAL FIX APPLIED HERE)
     - name: Run SCAP scan using STIG profile
       shell: >
         oscap xccdf eval
@@ -47,6 +47,7 @@
         /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
       args:
         creates: /tmp/scap/results_{{ inventory_hostname }}.xml
+      failed_when: false # <--- This ensures the playbook continues even if the scan finds non-compliance!
 
     # 6. STAGE THE REPORT TO THE WEB ROOT
     - name: Copy HTML report to Nginx web root
@@ -64,9 +65,6 @@
         path: /tmp/scap
         state: absent
 
-# -------------------------------------------------------------------
-# HANDLERS SECTION (NEW SECTION AT THE END OF THE FILE)
-# -------------------------------------------------------------------
   handlers:
     - name: Reload firewalld
       ansible.builtin.service:
