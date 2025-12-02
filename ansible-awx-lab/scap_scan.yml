@@ -4,6 +4,16 @@
   become: yes
   tasks:
 
+    # -------------------------------------------------------------------
+    # NEW TASK: Ensure the necessary SCAP content is installed
+    # -------------------------------------------------------------------
+    - name: Ensure scap-security-guide package is installed
+      ansible.builtin.dnf:
+        name: scap-security-guide
+        state: present
+      # We already have become: yes defined at the play level, but explicitly
+      # ensuring it for this critical installation task is good practice.
+
     - name: Ensure /tmp/scap directory exists
       file:
         path: /tmp/scap
