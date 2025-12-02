@@ -30,14 +30,20 @@
       args:
         creates: /tmp/scap/results_{{ inventory_hostname }}.xml
 
+    # -------------------------------------------------------------------
+    # CORRECTED TASK: Fetch SCAP XML results to the permanent Project path
+    # -------------------------------------------------------------------
     - name: Fetch SCAP XML results
       fetch:
         src: /tmp/scap/results_{{ inventory_hostname }}.xml
-        dest: ./scap_results/
+        dest: "{{ playbook_dir }}/scap_results/xml/"  # <--- CORRECTED DESTINATION
         flat: yes
 
+    # -------------------------------------------------------------------
+    # CORRECTED TASK: Fetch SCAP HTML report to the permanent Project path
+    # -------------------------------------------------------------------
     - name: Fetch SCAP HTML report
       fetch:
         src: /tmp/scap/report_{{ inventory_hostname }}.html
-        dest: ./scap_results/
+        dest: "{{ playbook_dir }}/scap_results/html/" # <--- CORRECTED DESTINATION
         flat: yes
