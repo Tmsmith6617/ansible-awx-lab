@@ -1,5 +1,5 @@
 ---
-- name: Run SCAP Compliance Scan and Stage Reports
+- name: Run SCAP Compliance Scan and Retrieve Reports
   hosts: all
   become: yes
   tasks:
@@ -10,34 +10,14 @@
         name: scap-security-guide
         state: present
 
-    # 2. INSTALL AND START WEB SERVER FOR RETRIEVAL
-    - name: Ensure Nginx is installed
-      ansible.builtin.dnf:
-        name: nginx
-        state: present
-
-    - name: Ensure Nginx service is running
-      ansible.builtin.service:
-        name: nginx
-        state: started
-        enabled: yes
-
-    # 3. OPEN FIREWALL PORT FOR NGINX
-    - name: Open firewall port 80 for Nginx
-      ansible.posix.firewalld:
-        service: http
-        permanent: yes
-        state: enabled
-      notify: Reload firewalld # This will be executed successfully now!
-
-    # 4. PREPARE SCAN DIRECTORY
+    # 2. PREPARE SCAN DIRECTORY
     - name: Ensure /tmp/scap directory exists
       ansible.builtin.file:
         path: /tmp/scap
         state: directory
         mode: '0755'
 
-    # 5. RUN THE SCAN (CRITICAL FIX APPLIED HERE)
+    # 3. RUN THE SCAN (IGNORING FAILURES)
     - name: Run SCAP scan using STIG profile
       shell: >
         oscap xccdf eval
@@ -47,26 +27,17 @@
         /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
       args:
         creates: /tmp/scap/results_{{ inventory_hostname }}.xml
-      failed_when: false # <--- This ensures the playbook continues even if the scan finds non-compliance!
+      failed_when: false # Crucial: Allows playbook to continue despite non-compliance
 
-    # 6. STAGE THE REPORT TO THE WEB ROOT
-    - name: Copy HTML report to Nginx web root
-      ansible.builtin.copy:
+    # 4. FETCH SCAP HTML REPORT TO AWX (The guaranteed retrieval method)
+    - name: Fetch SCAP HTML report to AWX persistent storage
+      ansible.builtin.fetch:
         src: /tmp/scap/report_{{ inventory_hostname }}.html
-        dest: /usr/share/nginx/html/scap_report_{{ inventory_hostname }}.html
-        remote_src: yes
-        owner: nginx
-        group: nginx
-        mode: '0644'
+        dest: "{{ playbook_dir }}/scap_reports/" # Saves to the permanent Project volume
+        flat: yes
 
-    # 7. CLEANUP
+    # 5. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
-
-  handlers:
-    - name: Reload firewalld
-      ansible.builtin.service:
-        name: firewalld
-        state: reloaded
