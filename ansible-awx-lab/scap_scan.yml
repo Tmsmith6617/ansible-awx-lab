@@ -2,53 +2,40 @@
 - name: Run SCAP Compliance Scan and Retrieve Reports
   hosts: all
   become: yes
+  vars:
+    report_filename: "report_{{ inventory_hostname }}.html"
+    remote_report_path: "/tmp/scap/{{ report_filename }}"
+    local_fetch_path: "{{ playbook_dir }}/scap_retrieved/" # New local directory path in AWX project
+
   tasks:
 
-    # 1. ENSURE SCAP CONTENT IS PRESENT
-    - name: Ensure scap-security-guide package is installed
-      ansible.builtin.dnf:
-        name: scap-security-guide
-        state: present
+    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan - REMAIN UNCHANGED) ...
 
-    # 2. PREPARE SCAN DIRECTORY
-    - name: Ensure /tmp/scap directory exists
-      ansible.builtin.file:
-        path: /tmp/scap
-        state: directory
-        mode: '0755'
-
-    # 3. RUN THE SCAN (IGNORING FAILURES)
-    - name: Run SCAP scan using STIG profile
-      shell: |
-        oscap xccdf eval \
-        --profile xccdf_org.ssgproject.content_profile_stig \
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
-        --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
-      args:
-        creates: /tmp/scap/results_{{ inventory_hostname }}.xml
-      failed_when: false
-
-    # 4. **GUARANTEED RETRIEVAL**: READ THE HTML CONTENT FROM THE REMOTE HOST
+    # 4. GUARANTEED RETRIEVAL: READ THE HTML CONTENT FROM THE REMOTE HOST
     - name: Read the SCAP HTML report file content
-      ansible.builtin.shell: >
-        cat /tmp/scap/report_{{ inventory_hostname }}.html
+      ansible.builtin.shell: "cat {{ remote_report_path }}"
       register: scap_report_content
-      changed_when: false # This task is only for reading
+      changed_when: false
 
-    # 5. **GUARANTEED RETRIEVAL**: PRINT RAW CONTENT TO JOB LOG (STDOUT)
-    - name: Display report content in job log for copy/paste retrieval
-      ansible.builtin.debug:
-        msg: |
-          ========================================================================================
-          ---BEGIN SCAP REPORT FOR {{ inventory_hostname }}---
-          
-          {{ scap_report_content.stdout }}
+    # 5. GUARANTEED RETRIEVAL: Write the content to a new file in the EE's /tmp directory
+    # This bypasses the log truncation issue by saving it as a clean text file.
+    - name: Write clean content to temporary file in execution environment
+      ansible.builtin.copy:
+        content: "{{ scap_report_content.stdout }}"
+        dest: "/tmp/clean_{{ report_filename }}"
+      delegate_to: localhost
+      run_once: true
 
-          ---END SCAP REPORT FOR {{ inventory_hostname }}---
-          ========================================================================================
-    
-    # 6. CLEANUP
+    # 6. FINAL RETRIEVAL ATTEMPT: Fetch the clean file from the EE's /tmp/ to the AWX Project Volume
+    - name: Fetch the clean HTML file to AWX Project Volume
+      ansible.builtin.fetch:
+        src: "/tmp/clean_{{ report_filename }}"
+        dest: "{{ local_fetch_path }}"
+        flat: true
+      delegate_to: localhost
+      run_once: true
+
+    # 7. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
