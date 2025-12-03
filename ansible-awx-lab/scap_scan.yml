@@ -8,15 +8,6 @@
 
   tasks:
 
-    - name: "Ensure openscap and scap-security-guide packages are installed"
-      ansible.builtin.package:
-        name:
-          - "openscap-scanner"
-          - "scap-security-guide"
-        state: "present"
-        update_cache: yes
-      when: "ansible_facts.os_family in ['RedHat', 'Debian']"
-
     - name: "Create results directory in mounted PVC"
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
@@ -101,3 +92,4 @@
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: "absent"
+
