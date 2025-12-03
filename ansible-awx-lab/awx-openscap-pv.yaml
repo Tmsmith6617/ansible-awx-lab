@@ -10,7 +10,6 @@ spec:
   storageClassName: standard
   hostPath:
     path: /srv/awx/openscap_results
-
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
