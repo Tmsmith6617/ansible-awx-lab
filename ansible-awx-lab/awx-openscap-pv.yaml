@@ -11,5 +11,19 @@ spec:
   hostPath:
     path: /srv/awx/openscap_results
   claimRef:
-    namespace: default          # <- AWX job PVC namespace
-    name: openscap-results-pvc  # <- PVC name
+    namespace: default          # AWX jobs run in default namespace
+    name: openscap-results-pvc  # PVC name to pre-bind
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openscap-results-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
