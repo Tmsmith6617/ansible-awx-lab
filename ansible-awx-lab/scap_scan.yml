@@ -1,20 +1,21 @@
 ---
 - name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
   hosts: all
-  become: yes
+  # Use privilege escalation (sudo) for installing packages and running oscap
+  become: yes 
   
   vars:
-    # Set the desired profile here
+    # Set the desired profile here (e.g., cis, stig, baseline)
     profile: "xccdf_org.ssgproject.content_profile_stig" 
     # Directory on the remote host to temporarily save the results
     remote_results_dir: "/tmp/openscap_results"
-    # Directory on the AWX control node where files will be copied
+    # Directory on the AWX control node where files will be copied as job artifacts
     awx_fetch_dir: "/tmp/awx_scap_reports"
     
   tasks:
 
-    - name: Ensure necessary packages are installed
-      package:
+    - name: Ensure openscap and scap-security-guide packages are installed
+      ansible.builtin.package:
         name:
           - openscap-scanner
           - scap-security-guide
@@ -28,7 +29,7 @@
         state: directory
         mode: "0755"
 
-    - name: Find SSG XCCDF content file
+    - name: Find SSG XCCDF content file (for OS security policy)
       ansible.builtin.find:
         paths:
           - /usr/share/xml/scap/ssg/content
@@ -52,25 +53,25 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
+      # SCAP tools often return RC 1 or 2 if some rules fail, but the scan completed
       failed_when: oscap_run.rc not in [0, 1, 2] 
       environment:
         LANG: "C.UTF-8"
 
-    # --- START OF NEW DEBUG TASKS ---
-
-    - name: List files in remote results directory before fetch
+    - name: List files in remote results directory before fetch (DEBUG STEP)
       ansible.builtin.command: ls -lha "{{ remote_results_dir }}"
       register: ls_before_fetch
-      # Use delegate_to: all to make sure this runs on the remote host
       delegate_to: "{{ inventory_hostname }}" 
-      changed_when: false # This is just for listing, so it shouldn't be 'changed'
+      changed_when: false
 
     - name: DEBUG: Show files found on remote host (Check file names here!)
       ansible.builtin.debug:
-        var: ls_before_fetch.stdout_lines
+        msg: "Remote files:\n{{ ls_before_fetch.stdout_lines | join('\n') }}"
       when: ls_before_fetch is defined
 
-    # --- END OF NEW DEBUG TASKS ---
+    # --------------------------------------------------------------------------
+    # FETCH TASKS (Copying files from remote host BACK to AWX)
+    # --------------------------------------------------------------------------
 
     - name: Fetch SCAP XCCDF Results XML back to AWX
       ansible.builtin.fetch:
@@ -78,7 +79,7 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no
+      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
       when: oscap_run is changed
 
     - name: Fetch SCAP ARF XML Results back to AWX
@@ -87,7 +88,7 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no
+      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
       when: oscap_run is changed
 
     - name: Fetch SCAP HTML Report back to AWX
@@ -96,7 +97,7 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no
+      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
       when: oscap_run is changed
 
     - name: Clean up temporary results directory on remote host
