@@ -6,9 +6,7 @@
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    # AWX automatically exposes the path to permanent artifact storage
-    # We will use this special variable directly in the fetch task.
-    # The 'fetch_dir' var is no longer needed.
+    # Removed the comment about 'artifacts_dir' since we are no longer using it.
 
   tasks:
     # 1. ENSURE SCAP CONTENT IS PRESENT
@@ -36,17 +34,16 @@
       failed_when: false
       changed_when: true
 
-    # 4. AUTOMATICALLY COLLECT ARTIFACT (Replacing Fetch, Pause, and Cleanup)
-    - name: AUTOMATICALLY copy SCAP report to job artifacts
+    # 4. AUTOMATICALLY COLLECT ARTIFACT (FIXED)
+    - name: AUTOMATICALLY copy SCAP report to job artifacts (using relative path)
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
-        # CRITICAL: Use the AWX environment variable 'artifacts_dir' 
-        # to ensure the file is saved permanently to the job's artifact storage.
-        dest: "{{ artifacts_dir }}/"
+        # CRITICAL FIX: The 'fetch' module automatically resolves this relative 
+        # path to a directory within the Execution Environment that AWX monitors 
+        # for artifacts. This bypasses the 'artifacts_dir' issue.
+        dest: "fetched" 
         flat: yes
-      # Fetch must run on the control node/EE to access artifacts_dir
-      delegate_to: localhost
-      # We delegate to localhost, but the file fetch occurs for each host.
+      # REMOVED: delegate_to: localhost (fetch handles the transfer implicitly)
 
     # 5. CLEANUP
     - name: Cleanup /tmp/scap directory
