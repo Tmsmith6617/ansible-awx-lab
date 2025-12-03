@@ -1,56 +1,42 @@
 ---
-- name: Run SCAP Compliance Scan and Retrieve Reports
+- name: Run SCAP Compliance Scan and Retrieve Reports (Base64 Retrieval)
   hosts: all
   become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
+    compressed_report_path: "/tmp/scap/{{ report_filename }}.gz"
 
   tasks:
 
-    # 1. ENSURE SCAP CONTENT IS PRESENT
-    - name: Ensure scap-security-guide package is installed
-      ansible.builtin.dnf:
-        name: scap-security-guide
-        state: present
+    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan - REMAIN UNCHANGED) ...
+    # You MUST include the previous successful tasks (1, 2, and 3) here.
 
-    # 2. PREPARE SCAN DIRECTORY
-    - name: Ensure /tmp/scap directory exists
-      ansible.builtin.file:
-        path: /tmp/scap
-        state: directory
-        mode: '0755'
+    # 4. COMPRESS THE REPORT
+    - name: Compress the HTML report on the remote host
+      ansible.builtin.shell: "gzip -c {{ remote_report_path }} > {{ compressed_report_path }}"
+      changed_when: true
 
-    # 3. RUN THE SCAN (IGNORING FAILURES)
-    - name: Run SCAP scan using STIG profile
-      shell: |
-        oscap xccdf eval \
-        --profile xccdf_org.ssgproject.content_profile_stig \
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
-        --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
-      args:
-        # NOTE: Removing 'creates' argument to force a fresh scan every time
-        # This guarantees the file is newly generated.
-      failed_when: false
-
-    # 4. GUARANTEED RETRIEVAL: READ THE HTML CONTENT FROM THE REMOTE HOST
-    # This must run immediately after the scan.
-    - name: Read the SCAP HTML report file content
-      ansible.builtin.shell: "cat {{ remote_report_path }}"
-      register: scap_report_content
+    # 5. READ BASE64 ENCODED CONTENT
+    - name: Read the base64 encoded, compressed report content
+      ansible.builtin.shell: "base64 -w 0 {{ compressed_report_path }}" # -w 0 prevents line wrapping
+      register: base64_content
       changed_when: false
 
-    # 5. GUARANTEED RETRIEVAL: PRINT RAW CONTENT TO JOB LOG (STDOUT)
-    - name: Display report content in job log for copy/paste retrieval
+    # 6. PRINT BASE64 CONTENT TO JOB LOG (GUARANTEED RETRIEVAL)
+    - name: Display base64 content in job log for copy/decode
       ansible.builtin.debug:
         msg: |
           ========================================================================================
-          ---BEGIN SCAP REPORT FOR {{ inventory_hostname }}---
+          ---BEGIN BASE64 GZIP SCAP REPORT FOR {{ inventory_hostname }}---
           
-          {{ scap_report_content.stdout }}
+          {{ base64_content.stdout }}
 
-          ---END SCAP REPORT FOR {{ inventory_hostname }}---
+          ---END BASE64 GZIP SCAP REPORT FOR {{ inventory_hostname }}---
           ========================================================================================
-    
-    # *** CLEANUP TASK HAS BEEN TEMPORARILY REMOVED ***
+
+    # 7. CLEANUP (Optional, but safe now)
+    - name: Cleanup temporary files on remote host
+      ansible.builtin.file:
+        path: /tmp/scap
+        state: absent
