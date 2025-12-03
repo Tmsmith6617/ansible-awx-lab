@@ -18,3 +18,15 @@ spec:
           operator: In
           values:
           - awx-control-plane
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openscap-results-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
