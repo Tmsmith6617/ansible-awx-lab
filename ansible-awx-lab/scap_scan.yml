@@ -1,18 +1,25 @@
 ---
-- name: Run SCAP Scan, Guarantee Report Creation, and Copy to Artifacts
+- name: Run SCAP Scan and Upload Report to S3
   hosts: all
-  become: yes # Required for SCAP scan on remote hosts
+  become: yes
   
   vars:
+    # Remote paths (unchanged)
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     
+    # EE temporary paths (unchanged)
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
-    awx_artifact_path: "/tmp/artifacts/{{ inventory_hostname }}_{{ report_filename }}"
+    
+    # S3 paths
+    s3_bucket_name: "your-scap-reports-bucket"
+    s3_object_key: "scap-reports/{{ inventory_hostname }}/{{ report_filename }}"
+    s3_region: "us-east-1" # Set your AWS region
     
   tasks:
-    # ... Tasks 1, 2, 3 (Installation, Directory, Scan) remain the same ...
+    # --- SCANNING AND FETCHING (UNCHANGED) ---
+
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
         name: scap-security-guide
@@ -34,46 +41,48 @@
       failed_when: false
       changed_when: true
 
-    # 4. FETCH THE FILE
     - name: Fetch report from remote host to EE temp directory
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
         flat: false
 
-    # 4.5. CRITICAL FIX: Ensure the artifact directory exists in the EE
-    - name: Ensure AWX Artifact Directory Exists
-      ansible.builtin.file:
-        path: /tmp/artifacts
-        state: directory
-        mode: '0755'
-      delegate_to: localhost
-      become: no
-      run_once: true
-
-    # 5. COPY THE ARTIFACT
-    - name: Copy fetched report to AWX /tmp/artifacts/ directory
-      ansible.builtin.copy:
+    # --- S3 UPLOAD (NEW WORKAROUND) ---
+    
+    # This task uploads the file fetched to the Execution Environment onto S3.
+    - name: Upload SCAP report to S3 bucket
+      amazon.aws.s3_object:
+        mode: put
+        bucket: "{{ s3_bucket_name }}"
+        object: "{{ s3_object_key }}"
         src: "{{ fetch_source_path }}"
-        dest: "{{ awx_artifact_path }}"
-        remote_src: yes 
-      
-      become: no
+        region: "{{ s3_region }}"
+        permission: public-read # Makes the file publicly accessible via URL
       delegate_to: localhost
       run_once: true
+      register: s3_upload_result
 
-    # 5.5. **NEW PERMISSIONS FIX**
-    - name: Set Universal Read Permissions on Artifacts
-      ansible.builtin.file:
-        path: /tmp/artifacts
-        mode: '0777' # Fixes common permission issues with AWX artifact collection
-        state: directory
-        recurse: yes
+    # This task retrieves the public URL for the file we just uploaded.
+    - name: Get public URL for S3 object
+      amazon.aws.s3_object:
+        mode: geturl
+        bucket: "{{ s3_bucket_name }}"
+        object: "{{ s3_object_key }}"
+        region: "{{ s3_region }}"
+        expiration: 0 # Get permanent URL
       delegate_to: localhost
-      become: no
       run_once: true
-      
-    # 6. CLEANUP
+      register: s3_url_result
+      when: s3_upload_result is changed # Only get URL if upload succeeded
+
+    # This task prints the URL to the job output, making it clickable.
+    - name: Print Public Report URL to Job Output
+      ansible.builtin.debug:
+        msg: "SCAP Report is now available at: {{ s3_url_result.url }}"
+      when: s3_url_result is defined and s3_url_result.url is defined
+
+    # --- CLEANUP (UNCHANGED) ---
+    
     - name: Cleanup /tmp/scap directory on remote host
       ansible.builtin.file:
         path: /tmp/scap
