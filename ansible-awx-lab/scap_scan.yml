@@ -3,18 +3,10 @@
   hosts: all
   become: yes
   vars:
-    # pick a profile name from your installed content (example names are shown)
-    # Change this to the profile you want to evaluate on your targets.
     profile: "xccdf_org.ssgproject.content_profile_standard"
-
-    # remote temporary directory on each host where results will be written
     remote_results_dir: "/tmp/openscap_results"
-
-    # local (controller) directory where fetch will place the results relative to AWX job runner working dir
-    # AWX will capture files fetched to this path as job artifacts; adjust if needed.
     controller_results_dir: "scap_results"
 
-    # Fallback sets of package names by OS family.
     openscap_packages:
       RedHat:
         - openscap-scanner
@@ -24,47 +16,44 @@
         - scap-security-guide
 
   tasks:
-    - name: Ensure package cache updated (Debian family)
-      ansible.builtin.apt:
-        update_cache: yes
-      when: ansible_facts['os_family'] == 'Debian'
 
-    - name: Install OpenSCAP + SSG packages (platform-specific)
-      ansible.builtin.package:
-        name: "{{ openscap_packages[ansible_facts['os_family']] | default(['openscap-scanner','scap-security-guide']) }}"
+    - name: Update apt cache (Debian family)
+      apt:
+        update_cache: yes
+      when: ansible_facts.os_family == "Debian"
+
+    - name: Install OpenSCAP + SSG
+      package:
+        name: "{{ openscap_packages[ansible_facts.os_family] | default(['openscap-scanner','scap-security-guide']) }}"
         state: present
 
-    - name: Create remote results directory
-      ansible.builtin.file:
+    - name: Create results directory on remote host
+      file:
         path: "{{ remote_results_dir }}"
         state: directory
-        mode: '0755'
-        owner: root
-        group: root
+        mode: "0755"
 
-    - name: Find SSG XCCDF data stream file on host
-      ansible.builtin.find:
+    - name: Find SSG XCCDF content file
+      find:
         paths:
           - /usr/share/xml/scap/ssg/content
           - /usr/share/ssg/content
           - /usr/share/xml/scap
         patterns: "*ssg*.xml"
         recurse: yes
-        file_type: file
       register: ssg_files
       failed_when: ssg_files.matched == 0
-      changed_when: false
 
-    - name: Pick first SSG content file found
-      ansible.builtin.set_fact:
+    - name: Set XCCDF file variable
+      set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
-    - name: Show the XCCDF file we will use (debug)
-      ansible.builtin.debug:
-        msg: "Using XCCDF content: {{ xccdf_file }}"
+    - name: "Show XCCDF file used"
+      debug:
+        msg: "Using {{ xccdf_file }}"
 
-    - name: Run OpenSCAP XCCDF evaluation (produces XML, ARF, and HTML)
-      ansible.builtin.command: >
+    - name: Run OpenSCAP evaluation
+      command: >
         oscap xccdf eval
         --profile {{ profile }}
         --results {{ remote_results_dir }}/{{ inventory_hostname }}.xml
@@ -72,27 +61,24 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
-      # sometimes oscap returns non-zero when failures are found; do not fail the play unless command failed to run
       failed_when: oscap_run.rc not in [0,2]
-      changed_when: true
       environment:
         LANG: "C.UTF-8"
 
-    - name: Debug: summarize oscap run
-      ansible.builtin.debug:
+    - name: "Debug: summarize oscap output"
+      debug:
         var: oscap_run.stdout_lines
 
-    - name: Ensure controller results directory exists (on controller)
-      # This runs on the controller (AWX job runner host)
+    - name: Make controller results directory
       delegate_to: localhost
       run_once: true
-      ansible.builtin.file:
+      file:
         path: "{{ controller_results_dir }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
-    - name: Fetch XML, ARF and HTML results back to controller
-      ansible.builtin.fetch:
+    - name: Fetch results back to controller
+      fetch:
         src: "{{ item }}"
         dest: "{{ controller_results_dir }}/{{ inventory_hostname }}/"
         flat: no
@@ -100,15 +86,3 @@
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
-      ignore_errors: yes
-
-    - name: (Optional) Clean up remote results (uncomment to enable)
-      ansible.builtin.file:
-        path: "{{ remote_results_dir }}"
-        state: absent
-      # uncomment the following line if you want remote results removed:
-      # when: false
-
-  # tags allow running only this job with `--tags scap` locally for testing
-  tags:
-    - scap
