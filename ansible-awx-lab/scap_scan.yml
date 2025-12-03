@@ -39,14 +39,15 @@
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
-        flat: yes # Saves directly as /tmp/scap_ee_fetch/report_filename.html
+        # CRITICAL FIX 1: Removed flat: yes. Now using the default, reliable path structure.
+        # This creates: /tmp/scap_ee_fetch/192.168.15.209/tmp/scap/report_filename.html
 
     # 5. STEP 2 (The Artifact Fix): Copy the file from the EE temp location to the permanent artifact store
     - name: Copy fetched report to permanent AWX artifact storage
       ansible.builtin.copy:
-        # CORRECTED SOURCE PATH: We only use the base directory + the filename
-        # (Removed the inventory_hostname subdirectory because flat: yes was used)
-        src: "{{ ee_temp_fetch_path }}/{{ remote_report_path | basename }}" 
+        # CRITICAL FIX 2: Source path now reflects the default, non-flat structure.
+        # This targets the file inside the host directory and the /tmp/scap/ folder.
+        src: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}{{ remote_report_path }}" 
         # Destination is the highly reliable path AWX monitors for job artifacts
         dest: "{{ lookup('env', 'AWX_TASK_TMPDIR') }}/artifacts/"
         remote_src: yes
