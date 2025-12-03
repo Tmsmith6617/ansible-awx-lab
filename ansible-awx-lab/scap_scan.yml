@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    profile: "xccdf_org.ssgproject.content_profile_standard"
+    profile: "xccdf_org.ssgproject.content_profile_stig"
     remote_results_dir: "/tmp/openscap_results"
     controller_results_dir: "scap_results"
 
@@ -86,3 +86,4 @@
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+
