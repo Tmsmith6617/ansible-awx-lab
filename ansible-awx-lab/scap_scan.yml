@@ -1,24 +1,45 @@
 ---
-- name: Run SCAP Scan and Fetch Report to Runner's Artifacts Directory
+- name: Run SCAP Scan, Guarantee Report Creation, and Fetch
   hosts: all
   become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    
-    # Path inside the runner pod where 'fetch' *should* put the file
-    fetch_dir: "artifacts/{{ inventory_hostname }}"
+    fetch_dir: "artifacts"
 
   tasks:
-    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan) ...
+    # 1. ENSURE SCAP CONTENT IS PRESENT
+    - name: Ensure scap-security-guide package is installed
+      ansible.builtin.dnf:
+        name: scap-security-guide
+        state: present
 
-    # 4. **CRITICAL STEP**: FETCH THE FILE
+    # 2. PREPARE SCAN DIRECTORY (Always run, in case cleanup deleted it)
+    - name: Ensure /tmp/scap directory exists
+      ansible.builtin.file:
+        path: /tmp/scap
+        state: directory
+        mode: '0755'
+      changed_when: true # Force changed status to ensure later tasks aren't skipped
+
+    # 3. RUN THE SCAN (Always run, because the file needs to be fresh)
+    - name: Run SCAP scan using STIG profile
+      shell: |
+        oscap xccdf eval \
+        --profile xccdf_org.ssgproject.content_profile_stig \
+        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
+        --report /tmp/scap/report_{{ inventory_hostname }}.html \
+        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
+      failed_when: false
+      changed_when: true # Force changed status to ensure later tasks aren't skipped
+
+    # 4. FETCH THE FILE
     - name: Fetch report from remote host to runner's artifacts directory
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ fetch_dir }}"
-        flat: yes # Saves the file directly as report_192.168.15.209.html
-        fail_on_missing: yes # Fails if the file wasn't created on the remote host
+        flat: yes 
+        fail_on_missing: yes # Now, this should succeed!
 
     # 5. **CRITICAL STEP**: EXTENDED PAUSE
     - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
@@ -28,7 +49,7 @@
       run_once: true
       become: no
 
-    # 6. CLEANUP
+    # 6. CLEANUP (Optional, as the next run will overwrite the directory)
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
