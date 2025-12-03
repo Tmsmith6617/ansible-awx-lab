@@ -1,0 +1,26 @@
+---
+- name: RESET - Revert Chrony Demo State for Idempotence Test
+  hosts: all
+  gather_facts: no
+  become: yes
+  
+  tasks:
+    - name: 1. Stop and Disable chrony service
+      service:
+        name: chronyd
+        state: stopped
+        enabled: no
+      ignore_errors: yes # Use ignore_errors in case the service is already stopped
+      
+    - name: 2. Delete main config file
+      # Using the 'shell' module with 'sudo' which was necessary for your environment
+      shell: sudo rm -f /etc/chrony/chrony.conf
+      args:
+        warn: no
+      changed_when: true # Force Ansible to always report changed since rm doesn't report well
+
+    - name: 3. Delete log files (optional but good practice)
+      file:
+        path: /var/log/chrony
+        state: absent
+      ignore_errors: yes
