@@ -14,7 +14,7 @@
     # Define the filename for the report
     report_filename: "scap_report_{{ ansible_hostname }}_{{ ansible_date_time.iso8601 }}.html"
     # Define the local directory on the control node (where AWX saves artifacts)
-    local_archive_dir: "/tmp/scap_archive" # This path is local to the AWX EE
+    local_archive_dir: "/tmp/scap_archive" 
     # Dynamic path for the SCAP content file (e.g., ssg-rhel10-ds.xml)
     scap_content_path: "/usr/share/xml/scap/ssg/content/ssg-rhel{{ rhel_version }}-ds.xml"
 
@@ -34,7 +34,7 @@
         state: directory
         mode: '0700' # Secure permissions
 
-    # --- NEW CHECK TASK (Highly Recommended) ---
+    # --- NEW CHECK TASK (YAML Indentation Fixed) ---
     - name: 2.5. CHECK: Verify SCAP content file exists on host
       ansible.builtin.stat:
         path: "{{ scap_content_path }}"
