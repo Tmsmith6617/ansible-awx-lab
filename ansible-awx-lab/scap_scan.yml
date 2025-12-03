@@ -12,9 +12,9 @@
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
     
-    # CRITICAL FIX: Changed to a user-owned path (~ is represented by ansible_env.HOME)
-    # The reports will be stored under the home directory of the user running this playbook.
-    local_storage_dir: "{{ lookup('env', 'HOME') }}/ansible_reports/scap"
+    # CRITICAL FIX: Changed from the ephemeral HOME lookup to a fixed, 
+    # persistent path on your WSL machine, assumed to be user 'tyler's home directory.
+    local_storage_dir: "/home/tyler/scap_reports"
     
     # Destination path on the control node for the final report
     final_local_report_path: "{{ local_storage_dir }}/{{ report_filename }}"
@@ -52,7 +52,7 @@
     # --- Local Storage Tasks (Control Node, requires NO BECOME) ---
     
     - name: 1. Ensure the final local storage directory exists
-      # The path uses lookup('env', 'HOME') to safely reference the user's home directory.
+      # The path is now an absolute, persistent path on your host system.
       ansible.builtin.file:
         path: "{{ local_storage_dir }}"
         state: directory
