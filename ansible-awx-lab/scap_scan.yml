@@ -47,11 +47,11 @@
       ansible.builtin.file:
         path: "{{ local_archive_dir }}/{{ ansible_hostname }}"
         state: directory
-      # FIX: delegate_to is now correctly aligned with 'ansible.builtin.file'
-      ansible.builtin.delegate_to: localhost
+      delegate_to: localhost
 
     - name: 5. Fetch the SCAP report results
       ansible.builtin.fetch:
         src: "{{ remote_report_dir }}/{{ report_filename }}"
         dest: "{{ local_archive_dir }}/{{ ansible_hostname }}/"
-        flat: yes # Saves the file directly in the host-specific directory
+        flat: yes
+      delegate_to: localhost
