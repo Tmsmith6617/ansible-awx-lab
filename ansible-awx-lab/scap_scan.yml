@@ -2,6 +2,7 @@
 - name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
   hosts: all
   become: yes
+
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
     remote_results_dir: "/tmp/openscap_results"
@@ -61,16 +62,21 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
-      failed_when: oscap_run.rc not in [0,2]
+      failed_when: oscap_run.rc not in [0,2]   # 2 means "non-compliance but scan OK"
       environment:
         LANG: "C.UTF-8"
 
-    - name: "Debug: summarize oscap output"
+    - name: Debug: summarize oscap output
       debug:
         var: oscap_run.stdout_lines
 
+    ###################################################################
+    # CONTROLLER ARTIFACT COLLECTION (AWX)
+    ###################################################################
+
     - name: Make controller results directory
       delegate_to: localhost
+      become: no
       run_once: true
       file:
         path: "{{ controller_results_dir }}"
@@ -78,6 +84,8 @@
         mode: "0755"
 
     - name: Fetch results back to controller
+      delegate_to: localhost
+      become: no
       fetch:
         src: "{{ item }}"
         dest: "{{ controller_results_dir }}/{{ inventory_hostname }}/"
@@ -86,4 +94,3 @@
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
         - "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
-
