@@ -19,25 +19,31 @@
 
     # 3. RUN THE SCAN (IGNORING FAILURES)
     - name: Run SCAP scan using STIG profile
-      shell: >
-        oscap xccdf eval
-        --profile xccdf_org.ssgproject.content_profile_stig
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml
-        --report /tmp/scap/report_{{ inventory_hostname }}.html
+      shell: |
+        oscap xccdf eval \
+        --profile xccdf_org.ssgproject.content_profile_stig \
+        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
+        --report /tmp/scap/report_{{ inventory_hostname }}.html \
         /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
       args:
         creates: /tmp/scap/results_{{ inventory_hostname }}.xml
-      failed_when: false # Crucial: Allows playbook to continue despite non-compliance
+      failed_when: false # Allows playbook to continue despite non-compliance
 
-    # 4. FETCH SCAP HTML REPORT TO AWX (The guaranteed retrieval method)
-    - name: Fetch SCAP HTML report to AWX persistent storage
-      ansible.builtin.fetch:
-        src: /tmp/scap/report_{{ inventory_hostname }}.html
-        dest: "{{ playbook_dir }}/scap_reports/" # Saves to the permanent Project volume
-        flat: yes
+    # 4. **NEW FIX**: COPY SCAP REPORT TO RUNNER'S /TMP FOLDER
+    # This location is automatically collected by AWX/Automation Controller as a job artifact.
+    - name: Copy SCAP HTML report to Execution Environment /tmp/ directory
+      ansible.builtin.shell: >
+        cp /tmp/scap/report_{{ inventory_hostname }}.html /tmp/
+      changed_when: true
 
-    # 5. CLEANUP
+    # 5. **NEW FIX**: CONFIRM ARTIFACT LOCATION
+    - name: Log the report location for easy retrieval
+      ansible.builtin.debug:
+        msg: "SCAP Report is now available as a job artifact in /tmp/report_{{ inventory_hostname }}.html"
+
+    # 6. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
+
