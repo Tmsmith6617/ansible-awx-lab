@@ -1,31 +1,30 @@
 ---
-- name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
-  hosts: all
-  become: yes  # Needed to install packages and run oscap
+- name: Run OpenSCAP/XCCDF scan and export XML (inside AWX pod)
+  hosts: localhost
+  connection: local
+  become: yes
 
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
-    # Path inside the container / AWX pod
-    remote_results_dir: "/openscap_results"
+    results_dir: "/openscap_results"
 
   tasks:
 
-    - name: Ensure OpenSCAP and SSG packages are installed
-      ansible.builtin.package:
+    - name: Ensure OpenSCAP and SSG are installed
+      package:
         name:
           - openscap-scanner
           - scap-security-guide
         state: present
-      when: ansible_facts.os_family in ['RedHat', 'Debian']
 
-    - name: Create results directory on remote host
-      ansible.builtin.file:
-        path: "{{ remote_results_dir }}"
+    - name: Create results directory inside pod
+      file:
+        path: "{{ results_dir }}"
         state: directory
         mode: "0755"
 
     - name: Find SSG XCCDF content file
-      ansible.builtin.find:
+      find:
         paths:
           - /usr/share/xml/scap/ssg/content
           - /usr/share/ssg/content
@@ -36,38 +35,30 @@
       failed_when: ssg_files.matched == 0
 
     - name: Set XCCDF file variable
-      ansible.builtin.set_fact:
+      set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
     - name: Show XCCDF file used
-      ansible.builtin.debug:
+      debug:
         msg: "Using {{ xccdf_file }}"
 
     - name: Run OpenSCAP evaluation (XML, ARF, HTML)
-      ansible.builtin.command: >
+      command: >
         oscap xccdf eval
         --profile {{ profile }}
-        --results {{ remote_results_dir }}/{{ inventory_hostname }}.xml
-        --results-arf {{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml
-        --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
+        --results {{ results_dir }}/{{ inventory_hostname }}.xml
+        --results-arf {{ results_dir }}/{{ inventory_hostname }}-arf.xml
+        --report {{ results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
-      register: oscap_run
-      failed_when: oscap_run.rc not in [0, 1, 2]
       environment:
         LANG: "C.UTF-8"
+      register: oscap_run
+      failed_when: oscap_run.rc not in [0,1,2]
 
-    - name: List generated OpenSCAP result files (for debugging)
-      ansible.builtin.command: ls -lh "{{ remote_results_dir }}"
+    - name: Debug: show files created in results directory
+      command: ls -lh "{{ results_dir }}"
       register: ls_results
-      changed_when: false
 
-    - name: Show list of files in results directory
-      ansible.builtin.debug:
+    - name: Show list of result files
+      debug:
         var: ls_results.stdout_lines
-
-    - name: Clean up old temporary files (optional)
-      ansible.builtin.file:
-        path: "{{ remote_results_dir }}"
-        state: directory
-        mode: "0755"
-        recurse: yes
