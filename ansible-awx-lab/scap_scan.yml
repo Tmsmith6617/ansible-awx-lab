@@ -1,5 +1,5 @@
 ---
-- name: Run SCAP Scan and Upload Report to S3
+- name: Run SCAP Scan and Save Report to Local Control Node
   hosts: all
   become: yes
   
@@ -8,24 +8,26 @@
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     
-    # EE temporary paths (unchanged)
+    # Execution Environment temporary fetch path (UNCHANGED from original)
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
     
-    # S3 paths
-    s3_bucket_name: "your-scap-reports-bucket"
-    s3_object_key: "scap-reports/{{ inventory_hostname }}/{{ report_filename }}"
-    s3_region: "us-east-1" # Set your AWS region
+    # NEW: Local storage directory on the control node
+    # Reports will be stored here. Create this directory before running.
+    local_storage_dir: "/ansible_reports/scap"
+    
+    # NEW: Destination path on the control node for the final report
+    final_local_report_path: "{{ local_storage_dir }}/{{ report_filename }}"
     
   tasks:
-    # --- SCANNING AND FETCHING (UNCHANGED) ---
+    # --- SCANNING (UNCHANGED) ---
 
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
         name: scap-security-guide
         state: present
 
-    - name: Ensure /tmp/scap directory exists
+    - name: Ensure /tmp/scap directory exists on remote host
       ansible.builtin.file:
         path: /tmp/scap
         state: directory
@@ -46,41 +48,30 @@
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
         flat: false
-
-    # --- S3 UPLOAD (NEW WORKAROUND) ---
+        
+    # --- LOCAL STORAGE (REPLACES S3 UPLOAD) ---
     
-    # This task uploads the file fetched to the Execution Environment onto S3.
-    - name: Upload SCAP report to S3 bucket
-      amazon.aws.s3_object:
-        mode: put
-        bucket: "{{ s3_bucket_name }}"
-        object: "{{ s3_object_key }}"
+    - name: 1. Ensure the final local storage directory exists
+      ansible.builtin.file:
+        path: "{{ local_storage_dir }}"
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+
+    - name: 2. Copy the report from the fetch temp path to the final local storage directory
+      # This task moves the file from where `fetch` put it, to a permanent,
+      # well-known location on the control node.
+      ansible.builtin.copy:
         src: "{{ fetch_source_path }}"
-        region: "{{ s3_region }}"
-        permission: public-read # Makes the file publicly accessible via URL
+        dest: "{{ final_local_report_path }}"
+        remote_src: yes # Source is on the control node itself
       delegate_to: localhost
-      run_once: true
-      register: s3_upload_result
 
-    # This task retrieves the public URL for the file we just uploaded.
-    - name: Get public URL for S3 object
-      amazon.aws.s3_object:
-        mode: geturl
-        bucket: "{{ s3_bucket_name }}"
-        object: "{{ s3_object_key }}"
-        region: "{{ s3_region }}"
-        expiration: 0 # Get permanent URL
-      delegate_to: localhost
-      run_once: true
-      register: s3_url_result
-      when: s3_upload_result is changed # Only get URL if upload succeeded
-
-    # This task prints the URL to the job output, making it clickable.
-    - name: Print Public Report URL to Job Output
+    - name: Print Local Report Path to Job Output
       ansible.builtin.debug:
-        msg: "SCAP Report is now available at: {{ s3_url_result.url }}"
-      when: s3_url_result is defined and s3_url_result.url is defined
-
+        msg: "SCAP Report for {{ inventory_hostname }} saved locally at: {{ final_local_report_path }}"
+        
     # --- CLEANUP (UNCHANGED) ---
     
     - name: Cleanup /tmp/scap directory on remote host
