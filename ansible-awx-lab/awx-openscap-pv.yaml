@@ -6,7 +6,7 @@ spec:
   capacity:
     storage: 5Gi
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   storageClassName: standard
   hostPath:
     path: /srv/awx/openscap_results
@@ -26,7 +26,7 @@ metadata:
   namespace: awx
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
       storage: 5Gi
