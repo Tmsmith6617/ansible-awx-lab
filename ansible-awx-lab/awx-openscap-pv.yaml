@@ -8,7 +8,7 @@ spec:
   accessModes:
     - ReadWriteMany
   hostPath:          # for local testing; in production use NFS/CSI driver
-    path: /srv/openscap_results
+    path: /srv/awx/openscap_results
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
