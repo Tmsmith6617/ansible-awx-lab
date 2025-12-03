@@ -7,12 +7,6 @@
 
   tasks:
 
-    - name: "Ensure results directory exists in PVC"
-      ansible.builtin.file:
-        path: "{{ remote_results_dir }}"
-        state: directory
-        mode: "0777"   # world-writable to avoid permission issues
-
     - name: "Find SSG XCCDF content file (for OS security policy)"
       ansible.builtin.find:
         paths:
@@ -53,3 +47,4 @@
     - name: "DEBUG: Show SCAP result files inside PVC"
       ansible.builtin.debug:
         msg: "Files in PVC:\n{{ ls_results.stdout_lines | join('\n') }}"
+
