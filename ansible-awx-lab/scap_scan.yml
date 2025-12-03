@@ -1,13 +1,14 @@
 ---
-- name: Run SCAP Scan, Guarantee Report Creation, and Automatically Collect Artifacts
+- name: Run SCAP Scan, Guarantee Report Creation, and Directly Copy to Artifacts
   hosts: all
   become: yes
   
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    # Removed the comment about 'artifacts_dir' since we are no longer using it.
-
+    # Define a known temporary spot inside the Execution Environment (EE)
+    ee_temp_fetch_path: "/tmp/scap_ee_fetch" 
+    
   tasks:
     # 1. ENSURE SCAP CONTENT IS PRESENT
     - name: Ensure scap-security-guide package is installed
@@ -21,7 +22,6 @@
         path: /tmp/scap
         state: directory
         mode: '0755'
-      # Keep changed_when: true to ensure the scan runs every time
 
     # 3. RUN THE SCAN
     - name: Run SCAP scan using STIG profile
@@ -34,18 +34,26 @@
       failed_when: false
       changed_when: true
 
-    # 4. AUTOMATICALLY COLLECT ARTIFACT (FIXED)
-    - name: AUTOMATICALLY copy SCAP report to job artifacts (using relative path)
+    # 4. STEP 1: Fetch the file from the remote host to a temporary location in the EE
+    - name: Fetch report from remote host to EE temp directory
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
-        # CRITICAL FIX: The 'fetch' module automatically resolves this relative 
-        # path to a directory within the Execution Environment that AWX monitors 
-        # for artifacts. This bypasses the 'artifacts_dir' issue.
-        dest: "fetched" 
+        dest: "{{ ee_temp_fetch_path }}"
         flat: yes
-      # REMOVED: delegate_to: localhost (fetch handles the transfer implicitly)
+      # Fetch saves to: /tmp/scap_ee_fetch/{{ inventory_hostname }}/remote_report_path
 
-    # 5. CLEANUP
+    # 5. STEP 2 (The Artifact Fix): Copy the file from the EE temp location to the permanent artifact store
+    - name: Copy fetched report to permanent AWX artifact storage
+      ansible.builtin.copy:
+        # Source is the path where 'fetch' saved the file inside the EE
+        src: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/{{ remote_report_path | basename }}"
+        # Destination is a highly reliable path AWX uses for job artifacts
+        dest: "{{ lookup('env', 'AWX_TASK_TMPDIR') }}/artifacts/"
+        remote_src: yes # The source file is local to the delegate_to: localhost (the EE)
+      delegate_to: localhost
+      changed_when: true
+
+    # 6. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
