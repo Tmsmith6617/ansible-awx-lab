@@ -20,7 +20,6 @@
           - scap-security-guide
         state: present
         update_cache: yes
-      # Use the 'when' clause to handle package managers for different OS families
       when: ansible_facts.os_family in ['RedHat', 'Debian']
 
     - name: Create results directory on remote host
@@ -53,17 +52,31 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
-      # SCAP tools often return RC 2 or higher if any rule fails, which is not a failure of the command itself
       failed_when: oscap_run.rc not in [0, 1, 2] 
       environment:
         LANG: "C.UTF-8"
+
+    # --- START OF NEW DEBUG TASKS ---
+
+    - name: List files in remote results directory before fetch
+      ansible.builtin.command: ls -lha "{{ remote_results_dir }}"
+      register: ls_before_fetch
+      # Use delegate_to: all to make sure this runs on the remote host
+      delegate_to: "{{ inventory_hostname }}" 
+      changed_when: false # This is just for listing, so it shouldn't be 'changed'
+
+    - name: DEBUG: Show files found on remote host (Check file names here!)
+      ansible.builtin.debug:
+        var: ls_before_fetch.stdout_lines
+      when: ls_before_fetch is defined
+
+    # --- END OF NEW DEBUG TASKS ---
 
     - name: Fetch SCAP XCCDF Results XML back to AWX
       ansible.builtin.fetch:
         src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
-      # The fetch module copies from the remote host to the AWX control node
       delegate_to: localhost
       become: no
       when: oscap_run is changed
@@ -90,4 +103,3 @@
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: absent
-
