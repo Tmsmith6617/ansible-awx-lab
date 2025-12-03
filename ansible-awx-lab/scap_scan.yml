@@ -34,7 +34,7 @@
         state: directory
         mode: '0700' # Secure permissions
 
-    # --- NEW CHECK TASK (YAML Indentation Fixed) ---
+    # --- Task 2.5: Check file existence (Indentation corrected) ---
     - name: 2.5. CHECK: Verify SCAP content file exists on host
       ansible.builtin.stat:
         path: "{{ scap_content_path }}"
@@ -44,7 +44,7 @@
       ansible.builtin.fail:
         msg: "FATAL: SCAP content file not found at {{ scap_content_path }}. This usually means the 'scap-security-guide' package is incomplete or the path changed for RHEL 10."
       when: not scap_file_status.stat.exists
-    # -------------------------------------------
+    # -------------------------------------------------------------
 
     - name: 3. Perform the SCAP compliance scan
       ansible.builtin.command:
