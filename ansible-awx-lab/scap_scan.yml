@@ -7,7 +7,6 @@
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     
-    # Path where 'fetch' saves the files *inside* the Execution Environment (EE)
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     
     # The EXACT path created by the fetch module for each host:
@@ -46,7 +45,17 @@
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
-        flat: false # Keep the path structure
+        flat: false
+
+    # 4.5. CRITICAL FIX: Ensure the artifact directory exists in the EE
+    - name: Ensure AWX Artifact Directory Exists
+      ansible.builtin.file:
+        path: /tmp/artifacts
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: no # Do not use sudo inside the EE
+      run_once: true
 
     # 5. FINAL ARTIFACT STEP: Copy the fetched report to the AWX artifact directory
     - name: Copy fetched report to AWX /tmp/artifacts/ directory
@@ -55,8 +64,7 @@
         dest: "{{ awx_artifact_path }}"
         remote_src: yes 
       
-      # *** CRITICAL FIX: Tell the container NOT to use sudo/become ***
-      become: no 
+      become: no # Prevent the 'sudo: command not found' error
       delegate_to: localhost
       run_once: true
       
@@ -65,5 +73,4 @@
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
-      # Only run cleanup if the fetch was successful
       when: not ansible_failed_result is defined or ansible_failed_result.ansible_module != 'fetch'
