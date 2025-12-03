@@ -1,27 +1,47 @@
 ---
-- name: Run SCAP Scan and Retrieve Reports using Synchronize Module
+- name: Run SCAP Scan and Retrieve Reports (Extended Pause for Retrieval)
   hosts: all
-  become: yes # Only apply to remote host tasks (192.168.15.209)
+  become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    runner_tmp_path: "/tmp/runner_sync/" # A dedicated directory in the EE's temp filesystem
+    runner_tmp_path: "/tmp/runner_sync/" 
 
   tasks:
 
-    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan - REMAIN UNCHANGED) ...
-    # These tasks run on the remote host (192.168.15.209) and need 'become: yes' (inherited from the play)
+    # 1. ENSURE SCAP CONTENT IS PRESENT
+    - name: Ensure scap-security-guide package is installed
+      ansible.builtin.dnf:
+        name: scap-security-guide
+        state: present
 
-    # 4. **FIXED**: Create a temporary, dedicated folder inside the Execution Environment (localhost)
+    # 2. PREPARE SCAN DIRECTORY
+    - name: Ensure /tmp/scap directory exists
+      ansible.builtin.file:
+        path: /tmp/scap
+        state: directory
+        mode: '0755'
+
+    # 3. RUN THE SCAN (GENERATING THE FILE)
+    - name: Run SCAP scan using STIG profile
+      shell: |
+        oscap xccdf eval \
+        --profile xccdf_org.ssgproject.content_profile_stig \
+        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
+        --report /tmp/scap/report_{{ inventory_hostname }}.html \
+        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
+      failed_when: false
+
+    # 4. Create runner's temporary directory
     - name: Ensure runner's temporary sync directory exists
       ansible.builtin.file:
         path: "{{ runner_tmp_path }}"
         state: directory
       delegate_to: localhost
       run_once: true
-      become: no # <<< CRITICAL FIX: The runner doesn't need sudo for local /tmp/
+      become: no
 
-    # 5. **FIXED**: SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
+    # 5. SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
     - name: Synchronize (rsync) report from remote host to runner's temporary directory
       ansible.posix.synchronize:
         src: "{{ remote_report_path }}"
@@ -29,15 +49,15 @@
         mode: pull
       delegate_to: "{{ inventory_hostname }}"
       run_once: true
-      become: no # <<< CRITICAL FIX: The synchronize module is pulling, not needing privilege escalation on the runner
+      become: no
 
-    # 6. **CRITICAL STEP**: PAUSE THE EXECUTION
-    - name: PAUSE FOR FILE RETRIEVAL (60 seconds to execute docker cp)
+    # 6. **CRITICAL STEP**: EXTENDED PAUSE
+    - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
       ansible.builtin.pause:
-        minutes: 1
+        minutes: 1.5 # Increased to 90 seconds
       delegate_to: localhost
       run_once: true
-      become: no # <<< CRITICAL FIX: No sudo needed for a local pause
+      become: no
 
     # 7. CLEANUP
     - name: Cleanup /tmp/scap directory
