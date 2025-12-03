@@ -7,7 +7,7 @@
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     # Define a known temporary spot inside the Execution Environment (EE)
-    ee_temp_fetch_path: "/tmp/scap_ee_fetch" 
+    ee_temp_fetch_path: "/tmp/scap_ee_fetch"  # Used by 'fetch' to pull the file locally
     
   tasks:
     # 1. ENSURE SCAP CONTENT IS PRESENT
@@ -40,18 +40,19 @@
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
         flat: yes
-      # Fetch saves to: /tmp/scap_ee_fetch/{{ inventory_hostname }}/remote_report_path
+      # Fetch saves to: /tmp/scap_ee_fetch/{{ inventory_hostname }}/report_hostname.html
 
     # 5. STEP 2 (The Artifact Fix): Copy the file from the EE temp location to the permanent artifact store
     - name: Copy fetched report to permanent AWX artifact storage
       ansible.builtin.copy:
-        # Source is the path where 'fetch' saved the file inside the EE
+        # Source is the file 'fetch' just created in the EE's temp path
         src: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/{{ remote_report_path | basename }}"
-        # Destination is a highly reliable path AWX uses for job artifacts
+        # Destination is the highly reliable path AWX monitors for job artifacts
         dest: "{{ lookup('env', 'AWX_TASK_TMPDIR') }}/artifacts/"
-        remote_src: yes # The source file is local to the delegate_to: localhost (the EE)
+        remote_src: yes # Source file is local to the EE (localhost)
       delegate_to: localhost
       changed_when: true
+      become: no # <-- CRITICAL FIX: Stops the task from requiring 'sudo'
 
     # 6. CLEANUP
     - name: Cleanup /tmp/scap directory
