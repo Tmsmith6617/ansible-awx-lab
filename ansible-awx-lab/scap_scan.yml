@@ -1,20 +1,16 @@
 ---
-- name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
+- name: "Run OpenSCAP/XCCDF scan and export XML (for AWX)"
   hosts: all
-  # Use privilege escalation (sudo) for installing packages and running oscap
-  become: yes 
+  become: yes
   
   vars:
-    # Set the desired profile here (e.g., cis, stig, baseline)
-    profile: "xccdf_org.ssgproject.content_profile_stig" 
-    # Directory on the remote host to temporarily save the results
-    remote_results_dir: "/openscap_results"
-    # Directory on the AWX control node where files will be copied as job artifacts
+    profile: "xccdf_org.ssgproject.content_profile_stig"
+    remote_results_dir: "/openscap_results"  # Mount path in AWX Job Template
     awx_fetch_dir: "/tmp/awx_scap_reports"
     
   tasks:
 
-    - name: Ensure openscap and scap-security-guide packages are installed
+    - name: "Ensure openscap and scap-security-guide packages are installed"
       ansible.builtin.package:
         name:
           - openscap-scanner
@@ -23,13 +19,13 @@
         update_cache: yes
       when: ansible_facts.os_family in ['RedHat', 'Debian']
 
-    - name: Create results directory on remote host
+    - name: "Create results directory on remote host"
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: directory
         mode: "0755"
 
-    - name: Find SSG XCCDF content file (for OS security policy)
+    - name: "Find SSG XCCDF content file (for OS security policy)"
       ansible.builtin.find:
         paths:
           - /usr/share/xml/scap/ssg/content
@@ -40,11 +36,11 @@
       register: ssg_files
       failed_when: ssg_files.matched == 0
 
-    - name: Set XCCDF file variable
+    - name: "Set XCCDF file variable"
       ansible.builtin.set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
-    - name: Run OpenSCAP evaluation and generate XML, ARF, and HTML
+    - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML"
       ansible.builtin.command: >
         oscap xccdf eval
         --profile {{ profile }}
@@ -53,18 +49,17 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
-      # SCAP tools often return RC 1 or 2 if some rules fail, but the scan completed
-      failed_when: oscap_run.rc not in [0, 1, 2] 
+      failed_when: oscap_run.rc not in [0, 1, 2]
       environment:
         LANG: "C.UTF-8"
 
-    - name: List files in remote results directory before fetch (DEBUG STEP)
+    - name: "List files in remote results directory before fetch (DEBUG STEP)"
       ansible.builtin.command: ls -lha "{{ remote_results_dir }}"
       register: ls_before_fetch
-      delegate_to: "{{ inventory_hostname }}" 
+      delegate_to: "{{ inventory_hostname }}"
       changed_when: false
 
-    - name: DEBUG: Show files found on remote host (Check file names here!)
+    - name: "DEBUG: Show files found on remote host (Check file names here!)"
       ansible.builtin.debug:
         msg: "Remote files:\n{{ ls_before_fetch.stdout_lines | join('\n') }}"
       when: ls_before_fetch is defined
@@ -73,35 +68,34 @@
     # FETCH TASKS (Copying files from remote host BACK to AWX)
     # --------------------------------------------------------------------------
 
-    - name: Fetch SCAP XCCDF Results XML back to AWX
+    - name: "Fetch SCAP XCCDF Results XML back to AWX"
       ansible.builtin.fetch:
         src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
+      become: no
       when: oscap_run is changed
 
-    - name: Fetch SCAP ARF XML Results back to AWX
+    - name: "Fetch SCAP ARF XML Results back to AWX"
       ansible.builtin.fetch:
         src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
+      become: no
       when: oscap_run is changed
 
-    - name: Fetch SCAP HTML Report back to AWX
+    - name: "Fetch SCAP HTML Report back to AWX"
       ansible.builtin.fetch:
         src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
-      become: no # <-- CRITICAL FIX: Disable sudo for the AWX control node
+      become: no
       when: oscap_run is changed
 
-    - name: Clean up temporary results directory on remote host
+    - name: "Clean up temporary results directory on remote host"
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: absent
-
