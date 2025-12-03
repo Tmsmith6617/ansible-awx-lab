@@ -1,30 +1,37 @@
 ---
-- name: Run SCAP Scan, Guarantee Report Creation, and Directly Copy to Artifacts
+- name: Run SCAP Scan, Guarantee Report Creation, and Copy to Artifacts
   hosts: all
   become: yes
   
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    # Define a known temporary spot inside the Execution Environment (EE)
+    
+    # Path where 'fetch' saves the files *inside* the Execution Environment (EE)
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     
+    # The EXACT path created by the fetch module for each host:
+    fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
+    
+    # THE AWX ARTIFACT DESTINATION (must be inside the EE)
+    awx_artifact_path: "/tmp/artifacts/{{ inventory_hostname }}_{{ report_filename }}"
+    
   tasks:
-    # 1. ENSURE SCAP CONTENT IS PRESENT
+    # 1. ENSURE SCAP CONTENT IS PRESENT (No Change)
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
         name: scap-security-guide
         state: present
 
-    # 2. PREPARE SCAN DIRECTORY
+    # 2. PREPARE SCAN DIRECTORY (No Change)
     - name: Ensure /tmp/scap directory exists
       ansible.builtin.file:
         path: /tmp/scap
         state: directory
         mode: '0755'
 
-    # 3. RUN THE SCAN
-    - name: Run SCAP scan using STIG profile
+    # 3. RUN THE SCAN (No Change)
+    - name: Run SCAP scan using STIG profile and save report locally
       ansible.builtin.shell: |
         oscap xccdf eval \
         --profile xccdf_org.ssgproject.content_profile_stig \
@@ -34,25 +41,32 @@
       failed_when: false
       changed_when: true
 
-    # 4. STEP 1: Fetch the file from the remote host to a temporary location in the EE
+    # 4. FETCH THE FILE from the remote host to the Execution Environment
     - name: Fetch report from remote host to EE temp directory
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
-        # Using default (non-flat) path structure
-        # This creates: /tmp/scap_ee_fetch/192.168.15.209/tmp/scap/report_filename.html
+        flat: false # Keep the path structure
 
-    # 5. STEP 2 (THE FINAL ARTIFACT FIX): Use the dedicated AWX module
-    - name: Store fetched report permanently using AWX Artifact module
-      ansible.tower.artifact:
-        # Source path to file inside the Execution Environment (EE)
-        src: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}{{ remote_report_path }}" 
-      delegate_to: localhost
-      changed_when: true
-      # No need for become: no, as this module inherently runs under the correct AWX context.
+    # 5. FINAL ARTIFACT STEP: Copy the fetched report to the AWX artifact directory
+    # The file must be moved from the complex path created by 'fetch' to the simple
+    # path AWX monitors. This task MUST run on 'localhost'.
+    - name: Copy fetched report to AWX /tmp/artifacts/ directory
+      ansible.builtin.copy:
+        src: "{{ fetch_source_path }}"
+        dest: "{{ awx_artifact_path }}"
+        remote_src: yes # The source file is already inside the EE container
       
-    # 6. CLEANUP
+      # *** THIS IS THE CRITICAL LINE ***
+      # Ensures the copy happens *inside* the Execution Environment container
+      # where /tmp/artifacts/ is monitored by AWX.
+      delegate_to: localhost
+      run_once: true
+      
+    # 6. CLEANUP (No Change)
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
+      # Only run cleanup if the fetch was successful
+      when: ansible_facts.fetch_status is defined
