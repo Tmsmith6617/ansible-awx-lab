@@ -35,7 +35,7 @@
 
     - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML inside PVC"
       ansible.builtin.command: >
-        oscap xccdf eval
+        sudo oscap xccdf eval
         --profile "{{ profile }}"
         --results "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
         --results-arf "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
