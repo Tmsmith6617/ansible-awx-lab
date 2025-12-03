@@ -8,7 +8,7 @@
     # Set the desired profile here (e.g., cis, stig, baseline)
     profile: "xccdf_org.ssgproject.content_profile_stig" 
     # Directory on the remote host to temporarily save the results
-    remote_results_dir: "/tmp/openscap_results"
+    remote_results_dir: "/openscap_results"
     # Directory on the AWX control node where files will be copied as job artifacts
     awx_fetch_dir: "/tmp/awx_scap_reports"
     
@@ -104,3 +104,4 @@
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: absent
+
