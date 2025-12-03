@@ -1,26 +1,26 @@
 ---
 - name: Run SCAP Scan and Save Report to Local Control Node
   hosts: all
-  become: yes
+  become: yes # Enables privilege escalation (sudo) for tasks running on REMOTE hosts
   
   vars:
     # Remote paths (unchanged)
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     
-    # Execution Environment temporary fetch path (UNCHANGED from original)
+    # Execution Environment temporary fetch path
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
     
-    # NEW: Local storage directory on the control node
-    # Reports will be stored here. Create this directory before running.
+    # Local storage directory on the control node
+    # NOTE: Ensure the user running the playbook has write access to this path!
     local_storage_dir: "/ansible_reports/scap"
     
-    # NEW: Destination path on the control node for the final report
+    # Destination path on the control node for the final report
     final_local_report_path: "{{ local_storage_dir }}/{{ report_filename }}"
     
   tasks:
-    # --- SCANNING (UNCHANGED) ---
+    # --- SCANNING (Running on Remote Host - Requires sudo/become) ---
 
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
@@ -49,7 +49,9 @@
         dest: "{{ ee_temp_fetch_path }}"
         flat: false
         
-    # --- LOCAL STORAGE (REPLACES S3 UPLOAD) ---
+    # --- LOCAL STORAGE (Running on localhost - DO NOT Require sudo/become) ---
+    
+    # Fix: We add become: no to explicitly disable sudo for this and subsequent delegated tasks.
     
     - name: 1. Ensure the final local storage directory exists
       ansible.builtin.file:
@@ -58,21 +60,21 @@
         mode: '0755'
       delegate_to: localhost
       run_once: true
+      become: no # <-- CRITICAL FIX: Disables sudo/become for this task.
 
     - name: 2. Copy the report from the fetch temp path to the final local storage directory
-      # This task moves the file from where `fetch` put it, to a permanent,
-      # well-known location on the control node.
       ansible.builtin.copy:
         src: "{{ fetch_source_path }}"
         dest: "{{ final_local_report_path }}"
-        remote_src: yes # Source is on the control node itself
+        remote_src: yes
       delegate_to: localhost
+      become: no # <-- CRITICAL FIX: Disables sudo/become for this task.
 
     - name: Print Local Report Path to Job Output
       ansible.builtin.debug:
         msg: "SCAP Report for {{ inventory_hostname }} saved locally at: {{ final_local_report_path }}"
         
-    # --- CLEANUP (UNCHANGED) ---
+    # --- CLEANUP (Running on Remote Host - Requires sudo/become) ---
     
     - name: Cleanup /tmp/scap directory on remote host
       ansible.builtin.file:
