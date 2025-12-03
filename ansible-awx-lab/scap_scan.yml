@@ -1,4 +1,3 @@
----
 - name: "Run OpenSCAP/XCCDF scan and export XML (inside AWX pod)"
   hosts: "all"
   vars:
@@ -53,4 +52,3 @@
     - name: "DEBUG: Show SCAP result files"
       ansible.builtin.debug:
         msg: "Files in PVC:\n{{ ls_results.stdout_lines | join('\n') }}"
-
