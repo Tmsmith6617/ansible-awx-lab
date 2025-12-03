@@ -1,72 +1,71 @@
 ---
-- name: Perform SCAP Security Scan and Collect Results
+- name: Run SCAP Scan and Retrieve Reports using Synchronize Module
   hosts: all
-  gather_facts: yes
   become: yes
-
+  
   vars:
-    # Use ansible_distribution_major_version to dynamically set the file
-    rhel_version: "{{ ansible_distribution_major_version }}"
-    # Define the compliance profile to use (e.g., RHEL 8 CIS Benchmark)
-    scap_profile: "xccdf_org.ssgproject.content_profile_cis"
-    # Define the output directory on the target host
-    remote_report_dir: "/var/tmp/scap_reports"
-    # Define the filename for the report
-    report_filename: "scap_report_{{ ansible_hostname }}_{{ ansible_date_time.iso8601 }}.html"
-    # Define the local directory on the control node (where AWX saves artifacts)
-    local_archive_dir: "/tmp/scap_archive" 
-    # Dynamic path for the SCAP content file (e.g., ssg-rhel10-ds.xml)
-    scap_content_path: "/usr/share/xml/scap/ssg/content/ssg-rhel{{ rhel_version }}-ds.xml"
-
+    # Variables for dynamic file names and paths
+    report_filename: "report_{{ inventory_hostname }}.html"
+    remote_report_path: "/tmp/scap/{{ report_filename }}"
+    # This path is inside the Execution Environment container
+    runner_tmp_path: "/tmp/runner_sync" 
+    # Use STIG content path for RHEL 10
+    rhel_content_path: "/usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml"
 
   tasks:
-    - name: 1. Ensure OpenSCAP packages are installed
-      ansible.builtin.package:
-        name:
-          - openscap-scanner
-          - scap-security-guide
+
+    # 1. ENSURE SCAP CONTENT IS PRESENT
+    - name: Ensure scap-security-guide package is installed
+      ansible.builtin.dnf:
+        name: scap-security-guide
         state: present
-      register: scap_install
 
-    - name: 2. Ensure remote report directory exists
+    # 2. PREPARE SCAN DIRECTORY
+    - name: Ensure /tmp/scap directory exists
       ansible.builtin.file:
-        path: "{{ remote_report_dir }}"
+        path: /tmp/scap
         state: directory
-        mode: '0700' # Secure permissions
+        mode: '0755'
 
-    - name: 2.5. CHECK: Verify SCAP content file exists on host
-      ansible.builtin.stat:
-        path: "{{ scap_content_path }}"
-      register: scap_file_status
+    # 3. RUN THE SCAN (GENERATING THE FILE)
+    - name: Run SCAP scan using STIG profile
+      ansible.builtin.shell: |
+        oscap xccdf eval \
+        --profile xccdf_org.ssgproject.content_profile_stig \
+        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
+        --report /tmp/scap/report_{{ inventory_hostname }}.html \
+        {{ rhel_content_path }}
+      # We allow the scan to fail if compliance is bad, but not crash the playbook
+      failed_when: false
+      changed_when: true # Always report change since scan results change
+
+    # 4. Create a temporary, dedicated folder inside the Execution Environment (localhost)
+    - name: Ensure runner's temporary sync directory exists
+      ansible.builtin.file:
+        path: "{{ runner_tmp_path }}"
+        state: directory
+      delegate_to: localhost
+      run_once: true
+
+    # 5. SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
+    - name: Synchronize (rsync) report from remote host to runner's temporary directory
+      ansible.posix.synchronize:
+        src: "{{ remote_report_path }}"
+        dest: "{{ runner_tmp_path }}/"
+        mode: pull
+      # Delegate to the remote host to use its SSH credentials to pull the file 
+      # (rsync runs on the EE but acts as the SSH user)
+      delegate_to: "{{ inventory_hostname }}"
+
+    # 6. CRITICAL STEP: PAUSE THE EXECUTION (This is your extraction window)
+    - name: PAUSE FOR FILE RETRIEVAL (60 seconds to execute docker cp)
+      ansible.builtin.pause:
+        minutes: 1
+      delegate_to: localhost
+      run_once: true
       
-    - name: FAIL if SCAP content file is not found
-      ansible.builtin.fail:
-        msg: "FATAL: SCAP content file not found at {{ scap_content_path }}. This usually means the 'scap-security-guide' package is incomplete or the path changed for RHEL 10."
-      when: not scap_file_status.stat.exists
-
-    - name: 3. Perform the SCAP compliance scan
-      ansible.builtin.command:
-        # The oscap command now uses the dynamic path (e.g., ssg-rhel10-ds.xml)
-        cmd: >
-          oscap xccdf eval 
-          --profile {{ scap_profile }} 
-          --results-arf {{ remote_report_dir }}/{{ report_filename | replace('.html', '.xml') }} 
-          --report {{ remote_report_dir }}/{{ report_filename }} 
-          {{ scap_content_path }}
-      args:
-        # Prevents re-running the scan if the report already exists
-        creates: "{{ remote_report_dir }}/{{ report_filename }}"
-      register: scan_result
-
-    - name: 4. Create local archive directory on AWX EE
+    # 7. CLEANUP
+    - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
-        path: "{{ local_archive_dir }}/{{ ansible_hostname }}"
-        state: directory
-      delegate_to: localhost
-
-    - name: 5. Fetch the SCAP report results
-      ansible.builtin.fetch:
-        src: "{{ remote_report_dir }}/{{ report_filename }}"
-        dest: "{{ local_archive_dir }}/{{ ansible_hostname }}/"
-        flat: yes
-      delegate_to: localhost
+        path: /tmp/scap
+        state: absent
