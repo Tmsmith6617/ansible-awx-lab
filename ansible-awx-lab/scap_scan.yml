@@ -1,67 +1,34 @@
 ---
-- name: Run SCAP Scan and Retrieve Reports using Atomic Copy
+- name: Run SCAP Scan and Fetch Report to Runner's Artifacts Directory
   hosts: all
   become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    runner_tmp_path: "/tmp/runner_sync/" 
+    
+    # Path inside the runner pod where 'fetch' *should* put the file
+    fetch_dir: "artifacts/{{ inventory_hostname }}"
 
   tasks:
-    # 1. ENSURE SCAP CONTENT IS PRESENT
-    - name: Ensure scap-security-guide package is installed
-      ansible.builtin.dnf:
-        name: scap-security-guide
-        state: present
-    
-    # 2. PREPARE SCAN DIRECTORY
-    - name: Ensure /tmp/scap directory exists
-      ansible.builtin.file:
-        path: /tmp/scap
-        state: directory
-        mode: '0755'
-    
-    # 3. RUN THE SCAN (GENERATING THE FILE)
-    - name: Run SCAP scan using STIG profile
-      shell: |
-        oscap xccdf eval \
-        --profile xccdf_org.ssgproject.content_profile_stig \
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
-        --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
-      failed_when: false
-    
-    # 4. Create runner's temporary directory
-    - name: Ensure runner's temporary sync directory exists
-      ansible.builtin.file:
-        path: "{{ runner_tmp_path }}"
-        state: directory
-      delegate_to: localhost
-      run_once: true
-      become: no
-    
-    # 5. **CRITICAL FIX**: Use the copy module to pull the remote file to the runner's local filesystem
-    # NOTE: The 'copy' module runs on the remote host but is instructed to pull the file.
-    - name: Use copy to pull the remote file to runner's temporary directory
-      ansible.builtin.copy:
+    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan) ...
+
+    # 4. **CRITICAL STEP**: FETCH THE FILE
+    - name: Fetch report from remote host to runner's artifacts directory
+      ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
-        dest: "{{ runner_tmp_path }}"
-        mode: pull # <-- This forces the module to retrieve the file
-        owner: root # Ensure file permissions are good on the remote side before pulling
-        group: root
-      delegate_to: localhost # Run this task on the controller to manage the file pull
-      run_once: true
-      become: no # No sudo needed on the runner side for the final step
-    
-    # 6. **CRITICAL STEP**: EXTENDED PAUSE
+        dest: "{{ fetch_dir }}"
+        flat: yes # Saves the file directly as report_192.168.15.209.html
+        fail_on_missing: yes # Fails if the file wasn't created on the remote host
+
+    # 5. **CRITICAL STEP**: EXTENDED PAUSE
     - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
       ansible.builtin.pause:
         minutes: 1.5 
       delegate_to: localhost
       run_once: true
       become: no
-    
-    # 7. CLEANUP
+
+    # 6. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
