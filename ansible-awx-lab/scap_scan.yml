@@ -4,7 +4,6 @@
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
     remote_results_dir: "/openscap_results"
-    awx_fetch_dir: "/tmp/awx_scap_reports"
 
   tasks:
 
@@ -14,10 +13,10 @@
           - "openscap-scanner"
           - "scap-security-guide"
         state: "present"
-        update_cache: "yes"
-      when: "'ansible_facts.os_family' in ['RedHat', 'Debian']"
+        update_cache: yes
+      when: ansible_facts.os_family in ['RedHat', 'Debian']
 
-    - name: "Create results directory on remote host"
+    - name: "Create results directory in mounted PVC"
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: "directory"
@@ -30,9 +29,9 @@
           - "/usr/share/ssg/content"
           - "/usr/share/xml/scap"
         patterns: "*ssg*.xml"
-        recurse: "yes"
-      register: "ssg_files"
-      failed_when: "ssg_files.matched == 0"
+        recurse: yes
+      register: ssg_files
+      failed_when: ssg_files.matched == 0
 
     - name: "Set XCCDF file variable"
       ansible.builtin.set_fact:
@@ -50,50 +49,16 @@
         --results-arf "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
         --report "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
         "{{ xccdf_file }}"
-      register: "oscap_run"
-      failed_when: "oscap_run.rc not in [0, 1, 2]"
+      register: oscap_run
+      failed_when: oscap_run.rc not in [0, 1, 2]
       environment:
         LANG: "C.UTF-8"
 
-    - name: "List files in remote results directory before fetch (DEBUG STEP)"
+    - name: "List files in PVC after scan (DEBUG STEP)"
       ansible.builtin.command: "ls -lha '{{ remote_results_dir }}'"
-      register: "ls_before_fetch"
-      delegate_to: "{{ inventory_hostname }}"
-      changed_when: "false"
+      register: ls_results
+      changed_when: false
 
-    - name: "DEBUG: Show files found on remote host"
+    - name: "DEBUG: Show SCAP result files"
       ansible.builtin.debug:
-        msg: "Remote files:\n{{ ls_before_fetch.stdout_lines | join('\n') }}"
-      when: "ls_before_fetch is defined"
-
-    - name: "Fetch SCAP XCCDF Results XML back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: "yes"
-      delegate_to: "localhost"
-      become: "no"
-      when: "oscap_run is changed"
-
-    - name: "Fetch SCAP ARF XML Results back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: "yes"
-      delegate_to: "localhost"
-      become: "no"
-      when: "oscap_run is changed"
-
-    - name: "Fetch SCAP HTML Report back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: "yes"
-      delegate_to: "localhost"
-      become: "no"
-      when: "oscap_run is changed"
-
-    - name: "Clean up temporary results directory on remote host"
-      ansible.builtin.file:
-        path: "{{ remote_results_dir }}"
-        state: "absent"
+        msg: "Files in PVC:\n{{ ls_results.stdout_lines | join('\n') }}"
