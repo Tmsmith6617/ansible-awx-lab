@@ -64,7 +64,8 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       # The fetch module copies from the remote host to the AWX control node
-      delegate_to: localhost 
+      delegate_to: localhost
+      become: no
       when: oscap_run is changed
 
     - name: Fetch SCAP ARF XML Results back to AWX
@@ -73,6 +74,7 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
+      become: no
       when: oscap_run is changed
 
     - name: Fetch SCAP HTML Report back to AWX
@@ -81,9 +83,11 @@
         dest: "{{ awx_fetch_dir }}/"
         flat: yes
       delegate_to: localhost
+      become: no
       when: oscap_run is changed
 
     - name: Clean up temporary results directory on remote host
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: absent
+
