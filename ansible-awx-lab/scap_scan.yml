@@ -39,22 +39,18 @@
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
         dest: "{{ ee_temp_fetch_path }}"
-        # CRITICAL FIX 1: Removed flat: yes. Now using the default, reliable path structure.
+        # Using default (non-flat) path structure
         # This creates: /tmp/scap_ee_fetch/192.168.15.209/tmp/scap/report_filename.html
 
-    # 5. STEP 2 (The Artifact Fix): Copy the file from the EE temp location to the permanent artifact store
-    - name: Copy fetched report to permanent AWX artifact storage
-      ansible.builtin.copy:
-        # CRITICAL FIX 2: Source path now reflects the default, non-flat structure.
-        # This targets the file inside the host directory and the /tmp/scap/ folder.
+    # 5. STEP 2 (THE FINAL ARTIFACT FIX): Use the dedicated AWX module
+    - name: Store fetched report permanently using AWX Artifact module
+      ansible.tower.artifact:
+        # Source path to file inside the Execution Environment (EE)
         src: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}{{ remote_report_path }}" 
-        # Destination is the highly reliable path AWX monitors for job artifacts
-        dest: "{{ lookup('env', 'AWX_TASK_TMPDIR') }}/artifacts/"
-        remote_src: yes
       delegate_to: localhost
       changed_when: true
-      become: no # Prevents 'sudo: command not found' error
-
+      # No need for become: no, as this module inherently runs under the correct AWX context.
+      
     # 6. CLEANUP
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
