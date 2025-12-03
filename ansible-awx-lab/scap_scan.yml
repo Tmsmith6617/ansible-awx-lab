@@ -2,37 +2,35 @@
 - name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
   hosts: all
   become: yes
+  
   vars:
-    profile: "xccdf_org.ssgproject.content_profile_stig"
-    remote_results_dir: "/mnt/openscap_results"  # <- Mount path in AWX Job Template
-    openscap_packages:
-      RedHat:
-        - openscap-scanner
-        - scap-security-guide
-      Debian:
-        - openscap-utils
-        - scap-security-guide
-
+    # Set the desired profile here
+    profile: "xccdf_org.ssgproject.content_profile_stig" 
+    # Directory on the remote host to temporarily save the results
+    remote_results_dir: "/tmp/openscap_results"
+    # Directory on the AWX control node where files will be copied
+    awx_fetch_dir: "/tmp/awx_scap_reports"
+    
   tasks:
 
-    - name: Update apt cache (Debian family)
-      apt:
-        update_cache: yes
-      when: ansible_facts.os_family == "Debian"
-
-    - name: Install OpenSCAP + SSG
+    - name: Ensure necessary packages are installed
       package:
-        name: "{{ openscap_packages[ansible_facts.os_family] | default(['openscap-scanner','scap-security-guide']) }}"
+        name:
+          - openscap-scanner
+          - scap-security-guide
         state: present
+        update_cache: yes
+      # Use the 'when' clause to handle package managers for different OS families
+      when: ansible_facts.os_family in ['RedHat', 'Debian']
 
     - name: Create results directory on remote host
-      file:
+      ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: directory
         mode: "0755"
 
     - name: Find SSG XCCDF content file
-      find:
+      ansible.builtin.find:
         paths:
           - /usr/share/xml/scap/ssg/content
           - /usr/share/ssg/content
@@ -43,15 +41,11 @@
       failed_when: ssg_files.matched == 0
 
     - name: Set XCCDF file variable
-      set_fact:
+      ansible.builtin.set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
-    - name: Show XCCDF file used
-      debug:
-        msg: "Using {{ xccdf_file }}"
-
-    - name: Run OpenSCAP evaluation
-      command: >
+    - name: Run OpenSCAP evaluation and generate XML, ARF, and HTML
+      ansible.builtin.command: >
         oscap xccdf eval
         --profile {{ profile }}
         --results {{ remote_results_dir }}/{{ inventory_hostname }}.xml
@@ -59,18 +53,37 @@
         --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
         {{ xccdf_file }}
       register: oscap_run
-      failed_when: oscap_run.rc not in [0,2]
+      # SCAP tools often return RC 2 or higher if any rule fails, which is not a failure of the command itself
+      failed_when: oscap_run.rc not in [0, 1, 2] 
       environment:
         LANG: "C.UTF-8"
 
-    - name: Debug: summarize oscap output
-      debug:
-        var: oscap_run.stdout_lines
+    - name: Fetch SCAP XCCDF Results XML back to AWX
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      # The fetch module copies from the remote host to the AWX control node
+      delegate_to: localhost 
+      when: oscap_run is changed
 
-    - name: List generated OpenSCAP result files
-      command: ls -lh "{{ remote_results_dir }}"
-      register: ls_results
+    - name: Fetch SCAP ARF XML Results back to AWX
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      delegate_to: localhost
+      when: oscap_run is changed
 
-    - name: Show list of files
-      debug:
-        var: ls_results.stdout_lines
+    - name: Fetch SCAP HTML Report back to AWX
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      delegate_to: localhost
+      when: oscap_run is changed
+
+    - name: Clean up temporary results directory on remote host
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: absent
