@@ -1,31 +1,30 @@
 ---
-- name: "Run OpenSCAP/XCCDF scan and export XML (for AWX)"
+- name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
   hosts: all
-  become: yes
-  
+  become: yes  # Needed to install packages and run oscap
+
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
-    remote_results_dir: "/openscap_results"  # Mount path in AWX Job Template
-    awx_fetch_dir: "/tmp/awx_scap_reports"
-    
+    # Path inside the container / AWX pod
+    remote_results_dir: "/openscap_results"
+
   tasks:
 
-    - name: "Ensure openscap and scap-security-guide packages are installed"
+    - name: Ensure OpenSCAP and SSG packages are installed
       ansible.builtin.package:
         name:
           - openscap-scanner
           - scap-security-guide
         state: present
-        update_cache: yes
       when: ansible_facts.os_family in ['RedHat', 'Debian']
 
-    - name: "Create results directory on remote host"
+    - name: Create results directory on remote host
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
         state: directory
         mode: "0755"
 
-    - name: "Find SSG XCCDF content file (for OS security policy)"
+    - name: Find SSG XCCDF content file
       ansible.builtin.find:
         paths:
           - /usr/share/xml/scap/ssg/content
@@ -36,11 +35,15 @@
       register: ssg_files
       failed_when: ssg_files.matched == 0
 
-    - name: "Set XCCDF file variable"
+    - name: Set XCCDF file variable
       ansible.builtin.set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
-    - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML"
+    - name: Show XCCDF file used
+      ansible.builtin.debug:
+        msg: "Using {{ xccdf_file }}"
+
+    - name: Run OpenSCAP evaluation (XML, ARF, HTML)
       ansible.builtin.command: >
         oscap xccdf eval
         --profile {{ profile }}
@@ -53,49 +56,18 @@
       environment:
         LANG: "C.UTF-8"
 
-    - name: "List files in remote results directory before fetch (DEBUG STEP)"
-      ansible.builtin.command: ls -lha "{{ remote_results_dir }}"
-      register: ls_before_fetch
-      delegate_to: "{{ inventory_hostname }}"
+    - name: List generated OpenSCAP result files (for debugging)
+      ansible.builtin.command: ls -lh "{{ remote_results_dir }}"
+      register: ls_results
       changed_when: false
 
-    - name: "DEBUG: Show files found on remote host (Check file names here!)"
+    - name: Show list of files in results directory
       ansible.builtin.debug:
-        msg: "Remote files:\n{{ ls_before_fetch.stdout_lines | join('\n') }}"
-      when: ls_before_fetch is defined
+        var: ls_results.stdout_lines
 
-    # --------------------------------------------------------------------------
-    # FETCH TASKS (Copying files from remote host BACK to AWX)
-    # --------------------------------------------------------------------------
-
-    - name: "Fetch SCAP XCCDF Results XML back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: yes
-      delegate_to: localhost
-      become: no
-      when: oscap_run is changed
-
-    - name: "Fetch SCAP ARF XML Results back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: yes
-      delegate_to: localhost
-      become: no
-      when: oscap_run is changed
-
-    - name: "Fetch SCAP HTML Report back to AWX"
-      ansible.builtin.fetch:
-        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
-        dest: "{{ awx_fetch_dir }}/"
-        flat: yes
-      delegate_to: localhost
-      become: no
-      when: oscap_run is changed
-
-    - name: "Clean up temporary results directory on remote host"
+    - name: Clean up old temporary files (optional)
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
-        state: absent
+        state: directory
+        mode: "0755"
+        recurse: yes
