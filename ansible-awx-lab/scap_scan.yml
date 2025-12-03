@@ -6,7 +6,7 @@
 
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
-    remote_results_dir: "/openscap_results"
+    remote_results_dir: "/openscap_results/scan_output"
 
   tasks:
 
@@ -46,3 +46,4 @@
     - name: "DEBUG: Show SCAP result files in PVC"
       ansible.builtin.debug:
         msg: "Files in PVC:\n{{ ls_results.stdout_lines | join('\n') }}"
+
