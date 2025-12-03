@@ -1,70 +1,55 @@
 ---
-- name: Run SCAP Scan and Retrieve Reports using Synchronize Module
+- name: Run SCAP Scan, Guarantee Report Creation, and Fetch
   hosts: all
   become: yes
-  
   vars:
-    # Variables for dynamic file names and paths
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    # This path is inside the Execution Environment container
-    runner_tmp_path: "/tmp/runner_sync" 
-    # Use STIG content path for RHEL 10
-    rhel_content_path: "/usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml"
+    fetch_dir: "artifacts"
 
   tasks:
-
     # 1. ENSURE SCAP CONTENT IS PRESENT
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
         name: scap-security-guide
         state: present
 
-    # 2. PREPARE SCAN DIRECTORY
+    # 2. PREPARE SCAN DIRECTORY (Always run, in case cleanup deleted it)
     - name: Ensure /tmp/scap directory exists
       ansible.builtin.file:
         path: /tmp/scap
         state: directory
         mode: '0755'
+      changed_when: true # Force changed status to ensure later tasks aren't skipped
 
-    # 3. RUN THE SCAN (GENERATING THE FILE)
+    # 3. RUN THE SCAN (Always run, because the file needs to be fresh)
     - name: Run SCAP scan using STIG profile
-      ansible.builtin.shell: |
+      shell: |
         oscap xccdf eval \
         --profile xccdf_org.ssgproject.content_profile_stig \
         --results /tmp/scap/results_{{ inventory_hostname }}.xml \
         --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        {{ rhel_content_path }}
-      # We allow the scan to fail if compliance is bad, but not crash the playbook
+        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
       failed_when: false
-      changed_when: true # Always report change since scan results change
+      changed_when: true # Force changed status to ensure later tasks aren't skipped
 
-    # 4. Create a temporary, dedicated folder inside the Execution Environment (localhost)
-    - name: Ensure runner's temporary sync directory exists
-      ansible.builtin.file:
-        path: "{{ runner_tmp_path }}"
-        state: directory
-      delegate_to: localhost
-      run_once: true
-
-    # 5. SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
-    - name: Synchronize (rsync) report from remote host to runner's temporary directory
-      ansible.posix.synchronize:
+    # 4. FETCH THE FILE
+    - name: Fetch report from remote host to runner's artifacts directory
+      ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
-        dest: "{{ runner_tmp_path }}/"
-        mode: pull
-      # Delegate to the remote host to use its SSH credentials to pull the file 
-      # (rsync runs on the EE but acts as the SSH user)
-      delegate_to: "{{ inventory_hostname }}"
+        dest: "{{ fetch_dir }}"
+        flat: yes 
+        fail_on_missing: yes # Now, this should succeed!
 
-    # 6. CRITICAL STEP: PAUSE THE EXECUTION (This is your extraction window)
-    - name: PAUSE FOR FILE RETRIEVAL (60 seconds to execute docker cp)
+    # 5. **CRITICAL STEP**: EXTENDED PAUSE
+    - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
       ansible.builtin.pause:
-        minutes: 1
+        minutes: 1.5 
       delegate_to: localhost
       run_once: true
-      
-    # 7. CLEANUP
+      become: no
+
+    # 6. CLEANUP (Optional, as the next run will overwrite the directory)
     - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
