@@ -1,6 +1,7 @@
+---
 - name: Run SCAP Scan, Guarantee Report Creation, and Copy to Artifacts
   hosts: all
-  become: yes
+  become: yes # Required for SCAP scan on remote hosts
   
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
@@ -10,7 +11,6 @@
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
     
     # The EXACT path created by the fetch module for each host:
-    # Example: /tmp/scap_ee_fetch/192.168.1.10/tmp/scap/report_192.168.1.10.html
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
     
     # THE AWX ARTIFACT DESTINATION (must be inside the EE)
@@ -49,15 +49,14 @@
         flat: false # Keep the path structure
 
     # 5. FINAL ARTIFACT STEP: Copy the fetched report to the AWX artifact directory
-    # This task uses the standard 'copy' module which is guaranteed to be in your EE.
     - name: Copy fetched report to AWX /tmp/artifacts/ directory
       ansible.builtin.copy:
         src: "{{ fetch_source_path }}"
         dest: "{{ awx_artifact_path }}"
-        remote_src: yes # The source file is already inside the EE container
+        remote_src: yes 
       
-      # *** THIS IS THE CRITICAL LINE ***
-      # Ensures the copy happens *inside* the Execution Environment container
+      # *** CRITICAL FIX: Tell the container NOT to use sudo/become ***
+      become: no 
       delegate_to: localhost
       run_once: true
       
@@ -66,5 +65,5 @@
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
-      # Only run cleanup if the fetch task was successful (task name check is robust)
+      # Only run cleanup if the fetch was successful
       when: not ansible_failed_result is defined or ansible_failed_result.ansible_module != 'fetch'
