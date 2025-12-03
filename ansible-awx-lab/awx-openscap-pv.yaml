@@ -7,8 +7,10 @@ spec:
     storage: 5Gi
   accessModes:
     - ReadWriteMany
-  hostPath:          # for local testing; in production use NFS/CSI driver
+  storageClassName: standard
+  hostPath:
     path: /srv/awx/openscap_results
+
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
