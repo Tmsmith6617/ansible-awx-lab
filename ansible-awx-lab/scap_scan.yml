@@ -79,6 +79,10 @@
       debug:
         var: ls_results.stdout_lines
 
+    ###################################################################
+    # CONTROLLER ARTIFACT COLLECTION (AWX)
+    ###################################################################
+
     - name: "Make controller results directory"
       delegate_to: localhost
       become: no
@@ -89,7 +93,6 @@
         mode: "0755"
 
     - name: "Fetch results back to controller"
-      delegate_to: localhost
       become: no
       fetch:
         src: "{{ item }}"
