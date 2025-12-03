@@ -23,6 +23,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: openscap-results-pvc
+  namespace: awx
 spec:
   accessModes:
     - ReadWriteMany
