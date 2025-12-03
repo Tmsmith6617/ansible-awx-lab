@@ -1,82 +1,114 @@
 ---
-- name: Run SCAP Scan and Save Report to Local Control Node
+- name: Run OpenSCAP/XCCDF scan and export XML (for AWX)
   hosts: all
-  become: yes # Required for tasks running on remote hosts (SCAP scan, cleanup)
-  
+  become: yes
   vars:
-    # Remote paths (unchanged)
-    report_filename: "report_{{ inventory_hostname }}.html"
-    remote_report_path: "/tmp/scap/{{ report_filename }}"
-    
-    # Execution Environment temporary fetch path
-    ee_temp_fetch_path: "/tmp/scap_ee_fetch"
-    fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
-    
-    # CRITICAL FIX: Changed from the ephemeral HOME lookup to a fixed, 
-    # persistent path on your WSL machine, assumed to be user 'tyler's home directory.
-    local_storage_dir: "/home/tyler/scap_reports"
-    
-    # Destination path on the control node for the final report
-    final_local_report_path: "{{ local_storage_dir }}/{{ report_filename }}"
-    
+    # pick a profile name from your installed content (example names are shown)
+    # Change this to the profile you want to evaluate on your targets.
+    profile: "xccdf_org.ssgproject.content_profile_standard"
+
+    # remote temporary directory on each host where results will be written
+    remote_results_dir: "/tmp/openscap_results"
+
+    # local (controller) directory where fetch will place the results relative to AWX job runner working dir
+    # AWX will capture files fetched to this path as job artifacts; adjust if needed.
+    controller_results_dir: "scap_results"
+
+    # Fallback sets of package names by OS family.
+    openscap_packages:
+      RedHat:
+        - openscap-scanner
+        - scap-security-guide
+      Debian:
+        - openscap-utils
+        - scap-security-guide
+
   tasks:
-    # --- Scanning Tasks (Remote Host, requires BECOME) ---
-    
-    - name: Ensure scap-security-guide package is installed
-      ansible.builtin.dnf:
-        name: scap-security-guide
+    - name: Ensure package cache updated (Debian family)
+      ansible.builtin.apt:
+        update_cache: yes
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: Install OpenSCAP + SSG packages (platform-specific)
+      ansible.builtin.package:
+        name: "{{ openscap_packages[ansible_facts['os_family']] | default(['openscap-scanner','scap-security-guide']) }}"
         state: present
 
-    - name: Ensure /tmp/scap directory exists on remote host
+    - name: Create remote results directory
       ansible.builtin.file:
-        path: /tmp/scap
+        path: "{{ remote_results_dir }}"
         state: directory
         mode: '0755'
+        owner: root
+        group: root
 
-    - name: Run SCAP scan using STIG profile and save report locally
-      ansible.builtin.shell: |
-        oscap xccdf eval \
-        --profile xccdf_org.ssgproject.content_profile_stig \
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
-        --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
-      failed_when: false
+    - name: Find SSG XCCDF data stream file on host
+      ansible.builtin.find:
+        paths:
+          - /usr/share/xml/scap/ssg/content
+          - /usr/share/ssg/content
+          - /usr/share/xml/scap
+        patterns: "*ssg*.xml"
+        recurse: yes
+        file_type: file
+      register: ssg_files
+      failed_when: ssg_files.matched == 0
+      changed_when: false
+
+    - name: Pick first SSG content file found
+      ansible.builtin.set_fact:
+        xccdf_file: "{{ ssg_files.files[0].path }}"
+
+    - name: Show the XCCDF file we will use (debug)
+      ansible.builtin.debug:
+        msg: "Using XCCDF content: {{ xccdf_file }}"
+
+    - name: Run OpenSCAP XCCDF evaluation (produces XML, ARF, and HTML)
+      ansible.builtin.command: >
+        oscap xccdf eval
+        --profile {{ profile }}
+        --results {{ remote_results_dir }}/{{ inventory_hostname }}.xml
+        --results-arf {{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml
+        --report {{ remote_results_dir }}/{{ inventory_hostname }}.html
+        {{ xccdf_file }}
+      register: oscap_run
+      # sometimes oscap returns non-zero when failures are found; do not fail the play unless command failed to run
+      failed_when: oscap_run.rc not in [0,2]
       changed_when: true
+      environment:
+        LANG: "C.UTF-8"
 
-    - name: Fetch report from remote host to EE temp directory
-      ansible.builtin.fetch:
-        src: "{{ remote_report_path }}"
-        dest: "{{ ee_temp_fetch_path }}"
-        flat: false
-        
-    # --- Local Storage Tasks (Control Node, requires NO BECOME) ---
-    
-    - name: 1. Ensure the final local storage directory exists
-      # The path is now an absolute, persistent path on your host system.
-      ansible.builtin.file:
-        path: "{{ local_storage_dir }}"
-        state: directory
-        mode: '0755'
+    - name: Debug: summarize oscap run
+      ansible.builtin.debug:
+        var: oscap_run.stdout_lines
+
+    - name: Ensure controller results directory exists (on controller)
+      # This runs on the controller (AWX job runner host)
       delegate_to: localhost
       run_once: true
-      become: no # Explicitly run as the current user, without sudo.
-
-    - name: 2. Copy the report from the fetch temp path to the final local storage directory
-      ansible.builtin.copy:
-        src: "{{ fetch_source_path }}"
-        dest: "{{ final_local_report_path }}"
-        remote_src: yes
-      delegate_to: localhost
-      become: no # Explicitly run as the current user, without sudo.
-
-    - name: Print Local Report Path to Job Output
-      ansible.builtin.debug:
-        msg: "SCAP Report for {{ inventory_hostname }} saved locally at: {{ final_local_report_path }}"
-        
-    # --- CLEANUP (Remote Host, requires BECOME) ---
-    
-    - name: Cleanup /tmp/scap directory on remote host
       ansible.builtin.file:
-        path: /tmp/scap
+        path: "{{ controller_results_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Fetch XML, ARF and HTML results back to controller
+      ansible.builtin.fetch:
+        src: "{{ item }}"
+        dest: "{{ controller_results_dir }}/{{ inventory_hostname }}/"
+        flat: no
+      loop:
+        - "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
+        - "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
+        - "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+      ignore_errors: yes
+
+    - name: (Optional) Clean up remote results (uncomment to enable)
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
         state: absent
-      when: not ansible_failed_result is defined or ansible_failed_result.ansible_module != 'fetch'
+      # uncomment the following line if you want remote results removed:
+      # when: false
+
+  # tags allow running only this job with `--tags scap` locally for testing
+  tags:
+    - scap
