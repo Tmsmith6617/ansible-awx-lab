@@ -1,3 +1,4 @@
+---
 - name: "Run OpenSCAP/XCCDF scan and export XML (inside AWX pod)"
   hosts: "all"
   vars:
@@ -6,14 +7,13 @@
 
   tasks:
 
-    # Skip package installation; AWX pod must already have openscap + SSG
-    - name: "Create results directory in mounted PVC"
+    - name: "Ensure results directory exists in mounted PVC"
       ansible.builtin.file:
         path: "{{ remote_results_dir }}"
-        state: "directory"
+        state: directory
         mode: "0755"
 
-    - name: "Find SSG XCCDF content file inside AWX pod"
+    - name: "Find SSG XCCDF content file (for OS security policy)"
       ansible.builtin.find:
         paths:
           - "/usr/share/xml/scap/ssg/content"
@@ -32,7 +32,7 @@
       ansible.builtin.debug:
         msg: "Using {{ xccdf_file }}"
 
-    - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML inside AWX pod"
+    - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML inside PVC"
       ansible.builtin.command: >
         oscap xccdf eval
         --profile "{{ profile }}"
