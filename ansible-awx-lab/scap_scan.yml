@@ -47,7 +47,7 @@
       ansible.builtin.file:
         path: "{{ local_archive_dir }}/{{ ansible_hostname }}"
         state: directory
-        # The 'delegate_to: localhost' runs this task on the AWX Execution Environment
+      # FIX: delegate_to is now correctly aligned with 'ansible.builtin.file'
       ansible.builtin.delegate_to: localhost
 
     - name: 5. Fetch the SCAP report results
