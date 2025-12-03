@@ -10,15 +10,6 @@ spec:
   storageClassName: standard
   hostPath:
     path: /srv/awx/openscap_results
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: openscap-results-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: standard
+  claimRef:
+    namespace: default          # <- AWX job PVC namespace
+    name: openscap-results-pvc  # <- PVC name
