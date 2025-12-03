@@ -1,11 +1,29 @@
 ---
-- name: "Run OpenSCAP/XCCDF scan inside AWX pod"
-  hosts: "localhost"
+- name: "Run OpenSCAP/XCCDF scan and export XML (on VM)"
+  hosts: all
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
-    remote_results_dir: "/openscap_results/scan_output"
+    remote_results_dir: "/openscap_results"
+    awx_fetch_dir: "/tmp/awx_scap_reports"
 
   tasks:
+
+    - name: "Ensure openscap and scap-security-guide packages are installed"
+      ansible.builtin.package:
+        name:
+          - "openscap-scanner"
+          - "scap-security-guide"
+        state: present
+        update_cache: yes
+      become: yes
+      when: ansible_facts.os_family in ['RedHat', 'Debian']
+
+    - name: "Create results directory on remote host"
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: directory
+        mode: "0755"
+      become: yes
 
     - name: "Find SSG XCCDF content file (for OS security policy)"
       ansible.builtin.find:
@@ -35,16 +53,48 @@
         --report "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
         "{{ xccdf_file }}"
       register: oscap_run
-      failed_when: oscap_run.rc not in [0,1,2]
+      failed_when: oscap_run.rc not in [0, 1, 2]
       environment:
         LANG: "C.UTF-8"
 
-    - name: "List files in PVC after scan (DEBUG STEP)"
+    - name: "List files in results directory (DEBUG STEP)"
       ansible.builtin.command: "ls -lha '{{ remote_results_dir }}'"
       register: ls_results
       changed_when: false
 
-    - name: "DEBUG: Show SCAP result files inside PVC"
+    - name: "DEBUG: Show SCAP result files"
       ansible.builtin.debug:
-        msg: "Files in PVC:\n{{ ls_results.stdout_lines | join('\n') }}"
+        msg: "Files on VM:\n{{ ls_results.stdout_lines | join('\n') }}"
 
+    - name: "Fetch SCAP XML Result back to AWX"
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      delegate_to: localhost
+      become: no
+      when: oscap_run is changed
+
+    - name: "Fetch SCAP ARF XML Result back to AWX"
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      delegate_to: localhost
+      become: no
+      when: oscap_run is changed
+
+    - name: "Fetch SCAP HTML Report back to AWX"
+      ansible.builtin.fetch:
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+        dest: "{{ awx_fetch_dir }}/"
+        flat: yes
+      delegate_to: localhost
+      become: no
+      when: oscap_run is changed
+
+    - name: "Clean up temporary results directory on VM"
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: absent
+      become: yes
