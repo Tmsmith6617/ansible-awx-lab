@@ -15,8 +15,10 @@ kind: PersistentVolumeClaim
 metadata:
   name: openscap-results-pvc
 spec:
+  capacity:
+    storage: 5Gi
   accessModes:
     - ReadWriteMany
-  resources:
-    requests:
-      storage: 5Gi
+  storageClassName: standard
+  hostPath:
+    path: /srv/awx/openscap_results
