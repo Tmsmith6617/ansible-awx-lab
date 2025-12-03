@@ -1,56 +1,57 @@
 ---
-- name: Run SCAP Scan, Guarantee Report Creation, and Fetch
+- name: Perform SCAP Security Scan and Collect Results
   hosts: all
+  gather_facts: yes
   become: yes
+
   vars:
-    report_filename: "report_{{ inventory_hostname }}.html"
-    remote_report_path: "/tmp/scap/{{ report_filename }}"
-    fetch_dir: "artifacts"
+    # Define the compliance profile to use (e.g., RHEL 8 CIS Benchmark)
+    scap_profile: "xccdf_org.ssgproject.content_profile_cis"
+    # Define the output directory on the target host
+    remote_report_dir: "/var/tmp/scap_reports"
+    # Define the filename for the report
+    report_filename: "scap_report_{{ ansible_hostname }}_{{ ansible_date_time.iso8601 }}.html"
+    # Define the local directory on the control node (where AWX saves artifacts)
+    local_archive_dir: "/tmp/scap_archive" # This path is local to the AWX EE
 
   tasks:
-    # 1. ENSURE SCAP CONTENT IS PRESENT
-    - name: Ensure scap-security-guide package is installed
-      ansible.builtin.dnf:
-        name: scap-security-guide
+    - name: 1. Ensure OpenSCAP packages are installed
+      ansible.builtin.package:
+        name:
+          - openscap-scanner
+          - scap-security-guide
         state: present
+      register: scap_install
 
-    # 2. PREPARE SCAN DIRECTORY (Always run, in case cleanup deleted it)
-    - name: Ensure /tmp/scap directory exists
+    - name: 2. Ensure remote report directory exists
       ansible.builtin.file:
-        path: /tmp/scap
+        path: "{{ remote_report_dir }}"
         state: directory
-        mode: '0755'
-      changed_when: true # Force changed status to ensure later tasks aren't skipped
+        mode: '0700' # Secure permissions
 
-    # 3. RUN THE SCAN (Always run, because the file needs to be fresh)
-    - name: Run SCAP scan using STIG profile
-      shell: |
-        oscap xccdf eval \
-        --profile xccdf_org.ssgproject.content_profile_stig \
-        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
-        --report /tmp/scap/report_{{ inventory_hostname }}.html \
-        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
-      failed_when: false
-      changed_when: true # Force changed status to ensure later tasks aren't skipped
+    - name: 3. Perform the SCAP compliance scan
+      ansible.builtin.command:
+        # The oscap command runs the scan using the defined profile and outputs an HTML report
+        cmd: >
+          oscap xccdf eval 
+          --profile {{ scap_profile }} 
+          --results-arf {{ remote_report_dir }}/{{ report_filename | replace('.html', '.xml') }} 
+          --report {{ remote_report_dir }}/{{ report_filename }} 
+          /usr/share/xml/scap/ssg/content/ssg-rhel8-ds.xml
+      args:
+        # This makes the task idempotent: only run the scan if the final report doesn't exist
+        creates: "{{ remote_report_dir }}/{{ report_filename }}"
+      register: scan_result
 
-    # 4. FETCH THE FILE
-    - name: Fetch report from remote host to runner's artifacts directory
-      ansible.builtin.fetch:
-        src: "{{ remote_report_path }}"
-        dest: "{{ fetch_dir }}"
-        flat: yes 
-        fail_on_missing: yes # Now, this should succeed!
-
-    # 5. **CRITICAL STEP**: EXTENDED PAUSE
-    - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
-      ansible.builtin.pause:
-        minutes: 1.5 
-      delegate_to: localhost
-      run_once: true
-      become: no
-
-    # 6. CLEANUP (Optional, as the next run will overwrite the directory)
-    - name: Cleanup /tmp/scap directory
+    - name: 4. Create local archive directory on AWX EE
       ansible.builtin.file:
-        path: /tmp/scap
-        state: absent
+        path: "{{ local_archive_dir }}/{{ ansible_hostname }}"
+        state: directory
+        # The 'delegate_to: localhost' runs this task on the AWX Execution Environment
+      ansible.builtin.delegate_to: localhost
+
+    - name: 5. Fetch the SCAP report results
+      ansible.builtin.fetch:
+        src: "{{ remote_report_dir }}/{{ report_filename }}"
+        dest: "{{ local_archive_dir }}/{{ ansible_hostname }}/"
+        flat: yes # Saves the file directly in the host-specific directory
