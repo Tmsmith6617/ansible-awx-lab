@@ -1,42 +1,64 @@
 ---
-- name: Run SCAP Compliance Scan and Retrieve Reports (Base64 Retrieval)
+- name: Run SCAP Scan and Retrieve Reports using Synchronize Module
   hosts: all
   become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
-    compressed_report_path: "/tmp/scap/{{ report_filename }}.gz"
+    runner_tmp_path: "/tmp/runner_sync/" # A dedicated directory in the EE's temp filesystem
 
   tasks:
 
-    # ... (Tasks 1, 2, 3: Install SCAP, Create Dir, Run Scan - REMAIN UNCHANGED) ...
-    # You MUST include the previous successful tasks (1, 2, and 3) here.
+    # 1. ENSURE SCAP CONTENT IS PRESENT
+    - name: Ensure scap-security-guide package is installed
+      ansible.builtin.dnf:
+        name: scap-security-guide
+        state: present
 
-    # 4. COMPRESS THE REPORT
-    - name: Compress the HTML report on the remote host
-      ansible.builtin.shell: "gzip -c {{ remote_report_path }} > {{ compressed_report_path }}"
-      changed_when: true
+    # 2. PREPARE SCAN DIRECTORY
+    - name: Ensure /tmp/scap directory exists
+      ansible.builtin.file:
+        path: /tmp/scap
+        state: directory
+        mode: '0755'
 
-    # 5. READ BASE64 ENCODED CONTENT
-    - name: Read the base64 encoded, compressed report content
-      ansible.builtin.shell: "base64 -w 0 {{ compressed_report_path }}" # -w 0 prevents line wrapping
-      register: base64_content
-      changed_when: false
+    # 3. RUN THE SCAN (GENERATING THE FILE)
+    - name: Run SCAP scan using STIG profile
+      shell: |
+        oscap xccdf eval \
+        --profile xccdf_org.ssgproject.content_profile_stig \
+        --results /tmp/scap/results_{{ inventory_hostname }}.xml \
+        --report /tmp/scap/report_{{ inventory_hostname }}.html \
+        /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
+      failed_when: false
 
-    # 6. PRINT BASE64 CONTENT TO JOB LOG (GUARANTEED RETRIEVAL)
-    - name: Display base64 content in job log for copy/decode
-      ansible.builtin.debug:
-        msg: |
-          ========================================================================================
-          ---BEGIN BASE64 GZIP SCAP REPORT FOR {{ inventory_hostname }}---
-          
-          {{ base64_content.stdout }}
+    # 4. **NEW**: Create a temporary, dedicated folder inside the Execution Environment (localhost)
+    - name: Ensure runner's temporary sync directory exists
+      ansible.builtin.file:
+        path: "{{ runner_tmp_path }}"
+        state: directory
+      delegate_to: localhost
+      run_once: true
 
-          ---END BASE64 GZIP SCAP REPORT FOR {{ inventory_hostname }}---
-          ========================================================================================
+    # 5. **NEW**: SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
+    - name: Synchronize (rsync) report from remote host to runner's temporary directory
+      ansible.posix.synchronize:
+        src: "{{ remote_report_path }}"
+        dest: "{{ runner_tmp_path }}"
+        mode: pull
+      # Delegate to the remote host to use its SSH credentials to pull the file
+      delegate_to: "{{ inventory_hostname }}"
+      run_once: true
 
-    # 7. CLEANUP (Optional, but safe now)
-    - name: Cleanup temporary files on remote host
+    # 6. **CRITICAL STEP**: PAUSE THE EXECUTION
+    - name: PAUSE FOR FILE RETRIEVAL (60 seconds to execute docker cp)
+      ansible.builtin.pause:
+        minutes: 1
+      delegate_to: localhost
+      run_once: true
+
+    # 7. CLEANUP
+    - name: Cleanup /tmp/scap directory
       ansible.builtin.file:
         path: /tmp/scap
         state: absent
