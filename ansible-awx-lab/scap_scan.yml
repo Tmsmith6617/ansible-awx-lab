@@ -4,9 +4,7 @@
   become: yes
   vars:
     profile: "xccdf_org.ssgproject.content_profile_stig"
-    remote_results_dir: "/tmp/openscap_results"
-    controller_results_dir: "./scap_results"  # relative path inside project
-
+    remote_results_dir: "/mnt/openscap_results"  # <- Mount path in AWX Job Template
     openscap_packages:
       RedHat:
         - openscap-scanner
@@ -17,23 +15,23 @@
 
   tasks:
 
-    - name: "Update apt cache (Debian family)"
+    - name: Update apt cache (Debian family)
       apt:
         update_cache: yes
       when: ansible_facts.os_family == "Debian"
 
-    - name: "Install OpenSCAP + SSG"
+    - name: Install OpenSCAP + SSG
       package:
         name: "{{ openscap_packages[ansible_facts.os_family] | default(['openscap-scanner','scap-security-guide']) }}"
         state: present
 
-    - name: "Create writable results directory on remote host"
+    - name: Create results directory on remote host
       file:
         path: "{{ remote_results_dir }}"
         state: directory
-        mode: "0777"
+        mode: "0755"
 
-    - name: "Find SSG XCCDF content file"
+    - name: Find SSG XCCDF content file
       find:
         paths:
           - /usr/share/xml/scap/ssg/content
@@ -44,15 +42,15 @@
       register: ssg_files
       failed_when: ssg_files.matched == 0
 
-    - name: "Set XCCDF file variable"
+    - name: Set XCCDF file variable
       set_fact:
         xccdf_file: "{{ ssg_files.files[0].path }}"
 
-    - name: "Show XCCDF file used"
+    - name: Show XCCDF file used
       debug:
         msg: "Using {{ xccdf_file }}"
 
-    - name: "Run OpenSCAP evaluation"
+    - name: Run OpenSCAP evaluation
       command: >
         oscap xccdf eval
         --profile {{ profile }}
@@ -62,43 +60,17 @@
         {{ xccdf_file }}
       register: oscap_run
       failed_when: oscap_run.rc not in [0,2]
-      become: yes
       environment:
         LANG: "C.UTF-8"
 
-    - name: "Debug: summarize oscap output"
+    - name: Debug: summarize oscap output
       debug:
         var: oscap_run.stdout_lines
 
-    - name: "List generated OpenSCAP result files"
-      command: ls -l {{ remote_results_dir }}
+    - name: List generated OpenSCAP result files
+      command: ls -lh "{{ remote_results_dir }}"
       register: ls_results
-      ignore_errors: yes
 
-    - name: "Show list of files"
+    - name: Show list of files
       debug:
         var: ls_results.stdout_lines
-
-    ###################################################################
-    # CONTROLLER ARTIFACT COLLECTION (AWX)
-    ###################################################################
-
-    - name: "Make controller results directory"
-      delegate_to: localhost
-      become: no
-      run_once: true
-      file:
-        path: "{{ controller_results_dir }}"
-        state: directory
-        mode: "0755"
-
-    - name: "Fetch results back to controller"
-      become: no
-      fetch:
-        src: "{{ item }}"
-        dest: "{{ controller_results_dir }}/{{ inventory_hostname }}/"
-        flat: no
-      loop:
-        - "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
-        - "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
-        - "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
