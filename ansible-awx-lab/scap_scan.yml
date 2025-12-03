@@ -8,28 +8,22 @@
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     
     ee_temp_fetch_path: "/tmp/scap_ee_fetch"
-    
-    # The EXACT path created by the fetch module for each host:
     fetch_source_path: "{{ ee_temp_fetch_path }}/{{ inventory_hostname }}/tmp/scap/{{ report_filename }}"
-    
-    # THE AWX ARTIFACT DESTINATION (must be inside the EE)
     awx_artifact_path: "/tmp/artifacts/{{ inventory_hostname }}_{{ report_filename }}"
     
   tasks:
-    # 1. ENSURE SCAP CONTENT IS PRESENT
+    # ... Tasks 1, 2, 3 (Installation, Directory, Scan) remain the same ...
     - name: Ensure scap-security-guide package is installed
       ansible.builtin.dnf:
         name: scap-security-guide
         state: present
 
-    # 2. PREPARE SCAN DIRECTORY
     - name: Ensure /tmp/scap directory exists
       ansible.builtin.file:
         path: /tmp/scap
         state: directory
         mode: '0755'
 
-    # 3. RUN THE SCAN
     - name: Run SCAP scan using STIG profile and save report locally
       ansible.builtin.shell: |
         oscap xccdf eval \
@@ -40,7 +34,7 @@
       failed_when: false
       changed_when: true
 
-    # 4. FETCH THE FILE from the remote host to the Execution Environment
+    # 4. FETCH THE FILE
     - name: Fetch report from remote host to EE temp directory
       ansible.builtin.fetch:
         src: "{{ remote_report_path }}"
@@ -54,18 +48,29 @@
         state: directory
         mode: '0755'
       delegate_to: localhost
-      become: no # Do not use sudo inside the EE
+      become: no
       run_once: true
 
-    # 5. FINAL ARTIFACT STEP: Copy the fetched report to the AWX artifact directory
+    # 5. COPY THE ARTIFACT
     - name: Copy fetched report to AWX /tmp/artifacts/ directory
       ansible.builtin.copy:
         src: "{{ fetch_source_path }}"
         dest: "{{ awx_artifact_path }}"
         remote_src: yes 
       
-      become: no # Prevent the 'sudo: command not found' error
+      become: no
       delegate_to: localhost
+      run_once: true
+
+    # 5.5. **NEW PERMISSIONS FIX**
+    - name: Set Universal Read Permissions on Artifacts
+      ansible.builtin.file:
+        path: /tmp/artifacts
+        mode: '0777' # Fixes common permission issues with AWX artifact collection
+        state: directory
+        recurse: yes
+      delegate_to: localhost
+      become: no
       run_once: true
       
     # 6. CLEANUP
