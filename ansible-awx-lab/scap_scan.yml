@@ -1,18 +1,20 @@
 ---
-- name: Run SCAP Scan and Retrieve Reports (Extended Pause for Retrieval)
+- name: Run SCAP Scan and Retrieve Reports using Forced SCP
   hosts: all
   become: yes
   vars:
     report_filename: "report_{{ inventory_hostname }}.html"
     remote_report_path: "/tmp/scap/{{ report_filename }}"
     runner_tmp_path: "/tmp/runner_sync/" 
+    # NOTE: The 'ansible_user' and 'ansible_ssh_private_key_file' variables
+    # are automatically injected by AWX into the execution environment.
 
   tasks:
 
     # 1. ENSURE SCAP CONTENT IS PRESENT
-    - name: Ensure scap-security-guide package is installed
+    - name: Ensure rsync is installed for file transfer compatibility
       ansible.builtin.dnf:
-        name: scap-security-guide
+        name: rsync # Even though we use scp, rsync is good to have.
         state: present
 
     # 2. PREPARE SCAN DIRECTORY
@@ -41,20 +43,23 @@
       run_once: true
       become: no
 
-    # 5. SYNCHRONIZE (Pull) the file from the remote host to the runner's ephemeral /tmp/
-    - name: Synchronize (rsync) report from remote host to runner's temporary directory
-      ansible.posix.synchronize:
-        src: "{{ remote_report_path }}"
-        dest: "{{ runner_tmp_path }}"
-        mode: pull
-      delegate_to: "{{ inventory_hostname }}"
+    # 5. **CRITICAL FIX**: EXPLICITLY USE SCP TO PULL THE FILE
+    - name: Force SCP pull of the report to runner's temporary directory
+      ansible.builtin.shell: |
+        scp -o StrictHostKeyChecking=no \
+        "{{ ansible_user }}@{{ inventory_hostname }}:{{ remote_report_path }}" \
+        "{{ runner_tmp_path }}"
+      args:
+        # Prevents shell output from being logged, reducing the chance of hitting buffer limits
+        executable: /bin/bash 
+      delegate_to: localhost
       run_once: true
       become: no
 
     # 6. **CRITICAL STEP**: EXTENDED PAUSE
     - name: PAUSE FOR FILE RETRIEVAL (90 seconds to execute docker cp)
       ansible.builtin.pause:
-        minutes: 1.5 # Increased to 90 seconds
+        minutes: 1.5 
       delegate_to: localhost
       run_once: true
       become: no
