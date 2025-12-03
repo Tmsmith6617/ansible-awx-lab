@@ -10,11 +10,10 @@
         name: chronyd
         state: stopped
         enabled: no
-      ignore_errors: yes # Use ignore_errors in case the service is already stopped
+      ignore_errors: yes
       
     - name: 2. Delete main config file
-      # Using the 'command' module with 'sudo' which was necessary for your environment
+      # The command module uses the 'args' block for parameters like 'removes'
       ansible.builtin.command: sudo rm -f /etc/chrony/chrony.conf
-      # The 'removes' parameter makes this task idempotent. 
-      # It checks if the file is gone *before* trying to run the command.
-      removes: /etc/chrony/chrony.conf
+      args:
+        removes: /etc/chrony/chrony.conf
