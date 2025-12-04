@@ -20,8 +20,7 @@
       # is always “changed”. WOMP WOMP
       failed_when: false
 
-    # Fetch the results back to AWX because we like our SCAP output where we can
-    # see it, not buried on some RHEL server. I'm a data hoarder.
+    # I'm a data hoarder.
     - name: Fetch SCAP XML
       fetch:
         # Grab the SCAP XML from the host
@@ -30,3 +29,4 @@
         dest: ./scap_outputs/
         # Don’t recreate the host path.
         flat: yes
+
