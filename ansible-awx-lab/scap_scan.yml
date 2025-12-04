@@ -2,6 +2,11 @@
   hosts: all
   gather_facts: no
   tasks:
+
+    # Run SCAP scan on the RHEL host, working on a method to get it working in AWX pods but my Brain Hurts
+    # Attempted to get AWX to store data from SCAP scan by mounting PersistentVolumeClaim mounted onto task pod but would still need oscap installed and ssg content mounted and perms
+    # Also made a version that may have been able to output scap results to AWS S3 bucket, saw it online seemed kinda cool so I experimented. 
+    # As a side note for the AWS bucket one I had to create a custom execution environment using Docker Hub
     - name: Run SCAP scan
       shell: |
         oscap xccdf eval \
@@ -9,12 +14,19 @@
           --results /home/awxuser/scap_results.xml \
           /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml
       args:
+        # Using /bin/bash shells are finicky
         executable: /bin/bash
+      # SCAP always generates new results with timestamps, so technically this task
+      # is always “changed”. WOMP WOMP
       failed_when: false
 
+    # Fetch the results back to AWX because we like our SCAP output where we can
+    # see it, not buried on some RHEL server. I'm a data hoarder.
     - name: Fetch SCAP XML
       fetch:
+        # Grab the SCAP XML from the host
         src: /home/awxuser/scap_results.xml
+        # Dump it into AWX
         dest: ./scap_outputs/
+        # Don’t recreate the host path.
         flat: yes
-
