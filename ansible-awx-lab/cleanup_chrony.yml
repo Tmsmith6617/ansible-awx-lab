@@ -13,7 +13,6 @@
       ignore_errors: yes
       
     - name: 2. Delete main config file
-      # The command module uses the 'args' block for parameters like 'removes'
       ansible.builtin.command: sudo rm -f /etc/chrony/chrony.conf
       args:
         removes: /etc/chrony/chrony.conf
