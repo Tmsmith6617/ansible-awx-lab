@@ -1,16 +1,9 @@
----
 - name: Run SCAP scan and fetch XML
-  hosts: rhel-vm
+  hosts: all
   gather_facts: no
   tasks:
-
-    - name: Ensure SCAP Security Guide is installed
-      ansible.builtin.yum:
-        name: scap-security-guide
-        state: present
-
     - name: Run SCAP scan
-      ansible.builtin.shell: |
+      shell: |
         oscap xccdf eval \
           --profile xccdf_org.ssgproject.content_profile_cis \
           --results /home/awxuser/scap_results.xml \
@@ -18,8 +11,8 @@
       args:
         executable: /bin/bash
 
-    - name: Fetch SCAP XML results
-      ansible.builtin.fetch:
+    - name: Fetch SCAP XML
+      fetch:
         src: /home/awxuser/scap_results.xml
         dest: ./scap_outputs/
         flat: yes
