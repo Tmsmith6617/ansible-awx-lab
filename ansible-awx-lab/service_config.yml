@@ -4,21 +4,26 @@
   become: yes
 
   vars:
-    chrony_conf: "/etc/chrony/chrony.conf"          # Persistent system path
-    custom_ntp_server: "time.cloudflare.com"
-    allowed_network: "192.168.1.0/24"
-    chrony_log_dir: "/var/log/chrony"              # Persistent log directory
+    chrony_conf: "/etc/chrony/chrony.conf"          # chrony
+    custom_ntp_server: "time.cloudflare.com"       # Network Time Protocol server
+    allowed_network: "192.168.1.0/24"             # Who gets to play with our clock
+    chrony_log_dir: "/var/log/chrony"             # Logging
 
   tasks:
 
+    # Neat line for config
+    # Makes life easier =no spaghetti
     - name: Set dynamic facts
       set_fact:
         chrony_allow_line: "allow {{ allowed_network }}"
 
+    # Log location
     - name: Show selected log directory
       debug:
         msg: "Chrony logs will be stored at: {{ chrony_log_dir }}"
 
+    # Make sure the config directory exists avoid failures in conf/writing logs
+    # Idempotent, will only create directory if missing
     - name: Ensure chrony config directory exists
       file:
         path: /etc/chrony
@@ -27,6 +32,7 @@
         group: root
         mode: '0755'
 
+    # Make sure logs exist too for idempotency
     - name: Ensure chrony log directory exists
       file:
         path: "{{ chrony_log_dir }}"
@@ -35,6 +41,7 @@
         group: root
         mode: '0755'
 
+    # Copy over the main config. Will restart if Chrony changes
     - name: Deploy main chrony config
       copy:
         src: chrony.conf
@@ -44,6 +51,8 @@
         mode: '0644'
       notify: Restart chrony
 
+    # lineinfile and regexp to avoid duplicates. 
+    # Idempotent if line exists = no change
     - name: Ensure custom NTP server is in config
       lineinfile:
         path: "{{ chrony_conf }}"
@@ -54,6 +63,8 @@
         backrefs: yes
       notify: Restart chrony
 
+    # Defines networks/clients that can query our NTP server
+    # Chrony_allow_line variable makes idempotent I think
     - name: Ensure allowed network exists in config
       lineinfile:
         path: "{{ chrony_conf }}"
@@ -64,6 +75,7 @@
         backrefs: yes
       notify: Restart chrony
 
+    # Make sure Chrony is actually running
     - name: Enable and start chrony service
       service:
         name: chronyd
@@ -71,8 +83,8 @@
         enabled: yes
 
   handlers:
+    # Only restart when needed
     - name: Restart chrony
       service:
         name: chronyd
         state: restarted
-
