@@ -2,7 +2,13 @@
   hosts: localhost
   gather_facts: no
   tasks:
+    - name: Confirm project files exist
+      command: ls -l /runner/project
+      register: project_files
+
+    - name: Show project files (for debugging)
+      debug:
+        var: project_files.stdout_lines
+
     - name: Run Python script to convert SCAP XML -> XLSX
-      command: python3 scap_xml_to_xlsx.py
-      args:
-        chdir: "/runner/project"  # AWX mounts the project here
+      command: python3 /runner/project/scap_xml_to_xlsx.py
