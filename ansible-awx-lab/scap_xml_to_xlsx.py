@@ -10,7 +10,8 @@ from datetime import datetime
 # --------------------------
 XML_INPUT_DIR = "./scap_outputs"   # folder where your SCAP XMLs are stored
 TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_FILE = f"scap_results_{TIMESTAMP}.xlsx"  # avoids overwriting previous runs
+OUTPUT_FILE = OUTPUT_FILE = f"/home/awxuser/scap_results/scap_results_{TIMESTAMP}.xlsx"
+  # avoids overwriting previous runs
 
 # --------------------------
 # Functions
