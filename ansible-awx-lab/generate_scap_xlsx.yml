@@ -1,0 +1,8 @@
+- name: Generate SCAP XLSX
+  hosts: localhost       # runs on AWX controller
+  gather_facts: no
+  tasks:
+    - name: Run Python script to convert XML -> XLSX
+      command: python3 scripts/scap_xml_to_xlsx.py
+      args:
+        chdir: "{{ playbook_dir }}/../"  # path to repo root
