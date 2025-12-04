@@ -10,8 +10,8 @@ from datetime import datetime
 # --------------------------
 XML_INPUT_DIR = "./scap_outputs"   # folder where your SCAP XMLs are stored
 TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-OUTPUT_FILE = OUTPUT_FILE = f"/home/awxuser/scap_results/scap_results_{TIMESTAMP}.xlsx"
-  # avoids overwriting previous runs
+OUTPUT_FILE = f"/home/awxuser/scap_results/scap_results_{TIMESTAMP}.xlsx"
+# avoids overwriting previous runs
 
 # --------------------------
 # Functions
@@ -55,7 +55,7 @@ def main():
     total_rules = 0
     total_hosts = 0
 
-    # Use context manager for ExcelWriter
+    # Use context manager for ExcelWriter so file is saved automatically
     with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
         for xml_file in xml_files:
             hostname = os.path.basename(xml_file).replace(".xml", "")
