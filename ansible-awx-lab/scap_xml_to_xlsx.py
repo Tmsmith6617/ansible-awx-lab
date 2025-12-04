@@ -8,7 +8,7 @@ from datetime import datetime
 # --------------------------
 # Configurable variables
 # --------------------------
-XML_INPUT_DIR = "./scap_outputs"   # folder where your SCAP XMLs are stored
+XML_INPUT_DIR = "/home/awxuser/scap_outputs"   # folder where your SCAP XMLs are stored
 TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 OUTPUT_FILE = f"/home/awxuser/scap_results/scap_results_{TIMESTAMP}.xlsx"
 # avoids overwriting previous runs
