@@ -51,27 +51,27 @@ def main():
         print(f"No XML files found in {XML_INPUT_DIR}")
         return
 
-    writer = pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl")
     total_rules = 0
     total_hosts = 0
 
-    for xml_file in xml_files:
-        hostname = os.path.basename(xml_file).replace(".xml", "")
-        print(f"Processing host: {hostname}")
+    # Use context manager for ExcelWriter
+    with pd.ExcelWriter(OUTPUT_FILE, engine="openpyxl") as writer:
+        for xml_file in xml_files:
+            hostname = os.path.basename(xml_file).replace(".xml", "")
+            print(f"Processing host: {hostname}")
 
-        rows = parse_scap_xml(xml_file)
-        if not rows:
-            print(f"  WARNING: No <Rule> entries parsed from {xml_file}")
-            continue
+            rows = parse_scap_xml(xml_file)
+            if not rows:
+                print(f"  WARNING: No <Rule> entries parsed from {xml_file}")
+                continue
 
-        df = pd.DataFrame(rows)
-        total_rules += len(df)
-        total_hosts += 1
-        # Excel sheet name max 31 chars
-        sheet_name = hostname[:31]
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
+            df = pd.DataFrame(rows)
+            total_rules += len(df)
+            total_hosts += 1
+            # Excel sheet name max 31 chars
+            sheet_name = hostname[:31]
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    writer.save()
     print(f"\n✅ Finished processing {total_hosts} host(s), {total_rules} rules total")
     print(f"Results written to {OUTPUT_FILE}")
 
