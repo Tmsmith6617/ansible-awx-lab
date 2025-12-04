@@ -1,0 +1,94 @@
+---
+- name: "Run OpenSCAP scan on RHEL host and upload results to S3"
+  hosts: all
+  vars:
+    profile: "xccdf_org.ssgproject.content_profile_stig"
+    remote_results_dir: "/tmp/openscap_results"
+    s3_bucket: "my-scap-results-bucket"
+    s3_prefix: "scap_reports/{{ inventory_hostname }}/"
+
+  tasks:
+
+    - name: "Ensure openscap and scap-security-guide are installed"
+      ansible.builtin.package:
+        name:
+          - "openscap-scanner"
+          - "scap-security-guide"
+        state: present
+        update_cache: yes
+      become: yes
+      when: ansible_facts.os_family in ['RedHat', 'Debian']
+
+    - name: "Create results directory on RHEL host"
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: directory
+        mode: "0755"
+      become: yes
+
+    - name: "Find SSG XCCDF content file"
+      ansible.builtin.find:
+        paths:
+          - "/usr/share/xml/scap/ssg/content"
+          - "/usr/share/ssg/content"
+          - "/usr/share/xml/scap"
+        patterns: "*ssg*.xml"
+        recurse: yes
+      register: ssg_files
+      failed_when: ssg_files.matched == 0
+
+    - name: "Set XCCDF file variable"
+      ansible.builtin.set_fact:
+        xccdf_file: "{{ ssg_files.files[0].path }}"
+
+    - name: "Run OpenSCAP evaluation and generate XML, ARF, and HTML"
+      ansible.builtin.command: >
+        oscap xccdf eval
+        --profile "{{ profile }}"
+        --results "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
+        --results-arf "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
+        --report "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+        "{{ xccdf_file }}"
+      register: oscap_run
+      failed_when: oscap_run.rc not in [0,1,2]
+      environment:
+        LANG: "C.UTF-8"
+      become: yes
+
+    - name: "Make SCAP result files world-readable"
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: directory
+        mode: "0777"
+        recurse: yes
+      become: yes
+
+    - name: "Upload SCAP XML to S3"
+      amazon.aws.s3:
+        bucket: "{{ s3_bucket }}"
+        object: "{{ s3_prefix }}{{ inventory_hostname }}.xml"
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.xml"
+        mode: put
+      delegate_to: localhost
+
+    - name: "Upload SCAP ARF XML to S3"
+      amazon.aws.s3:
+        bucket: "{{ s3_bucket }}"
+        object: "{{ s3_prefix }}{{ inventory_hostname }}-arf.xml"
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}-arf.xml"
+        mode: put
+      delegate_to: localhost
+
+    - name: "Upload SCAP HTML report to S3"
+      amazon.aws.s3:
+        bucket: "{{ s3_bucket }}"
+        object: "{{ s3_prefix }}{{ inventory_hostname }}.html"
+        src: "{{ remote_results_dir }}/{{ inventory_hostname }}.html"
+        mode: put
+      delegate_to: localhost
+
+    - name: "Clean up temporary results directory on RHEL host"
+      ansible.builtin.file:
+        path: "{{ remote_results_dir }}"
+        state: absent
+      become: yes
