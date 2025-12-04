@@ -1,4 +1,4 @@
-- name: Full SCAP Scan → Fetch → XLSX
+- name: "Full SCAP Scan → Fetch → XLSX"
   hosts: all
   gather_facts: no
   become: yes
@@ -6,12 +6,10 @@
   vars:
     scap_xml_remote: "/home/awxuser/scap_results.xml"
     scap_xml_local: "/runner/project/ansible-awx-lab/scap_outputs/scap_results.xml"
-    python_script_path: "/runner/project/ansible-awx-lab/scap_xml_to_xlsx.py"
 
   tasks:
 
-    # 1️⃣ Run SCAP scan on the remote host
-    - name: Run SCAP scan
+    - name: "Run SCAP scan on the remote host"
       shell: |
         oscap xccdf eval \
           --profile xccdf_org.ssgproject.content_profile_cis \
@@ -21,29 +19,26 @@
         executable: /bin/bash
       failed_when: false
 
-    # 2️⃣ Fetch SCAP XML back to AWX project
-    - name: Fetch SCAP XML
+    - name: "Fetch SCAP XML back to AWX project"
       fetch:
         src: "{{ scap_xml_remote }}"
         dest: "{{ scap_xml_local }}"
         flat: yes
 
-- name: Generate SCAP XLSX
+- name: "Generate SCAP XLSX"
   hosts: localhost
   gather_facts: no
   tasks:
 
-    # Optional: check project contents
-    - name: Show project files (debug)
+    - name: "Show project files for debugging"
       command: ls -l /runner/project/ansible-awx-lab
       register: project_files
 
-    - name: Debug project files
+    - name: "Debug project files"
       debug:
         var: project_files.stdout_lines
 
-    # 3️⃣ Run Python script to convert XML -> XLSX
-    - name: Run Python script to convert SCAP XML -> XLSX
-      command: python3 {{ python_script_path }}
+    - name: "Run Python script to convert SCAP XML → XLSX"
+      command: python3 /runner/project/ansible-awx-lab/scap_xml_to_xlsx.py
       args:
         chdir: "/runner/project/ansible-awx-lab"
